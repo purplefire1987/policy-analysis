@@ -250,6 +250,8 @@ def _render_problems(ctx):
 
 def _render_impacts(ctx):
     """影响列：三档是否守住、引用编号是否真存在。"""
+    if ctx['week'] < IMPACT_SINCE:
+        return [f'（影响列校验自 {IMPACT_SINCE} 起生效，本篇不适用）', '']
     issues = ctx['impacts']
     if not issues:
         return ['✅ 影响列合规（三档或三档＋判断编号）', '']
@@ -296,7 +298,7 @@ def check_week(week_str, verbose=True):
     impacts = impact_issues(rows, txt, week_str)
     missing = [(d, t, c) for d, t, c in in_window if (d, t) not in matched]
 
-    ctx = {'in_window': in_window, 'rows': rows, 'matched': matched, 'merged': merged,
+    ctx = {'week': week_str, 'in_window': in_window, 'rows': rows, 'matched': matched, 'merged': merged,
            'missing': missing, 'orphans': orphan, 'placeholders': placeholders,
            'undeclared': undeclared, 'declared': declared, 'fm_count': fm_count,
            'dist': dist, 'dist_sum': dist_sum, 'impacts': impacts}
