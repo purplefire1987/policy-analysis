@@ -296,7 +296,10 @@ def run(argv=None):
                       ['✗ 缺「二、本周政策信号」节：七节模板要求该节必在，',
                        f'  只有 LEGACY_WEEKS 名单内的归档周可豁免，{args.week} 不在名单里。'])
 
-    verdict, res, lines = check_week(args.week)
+    try:
+        verdict, res, lines = check_week(args.week)
+    except ValueError as e:               # 周号格式非法：要有摘要的 BAD_INPUT，不能抛 traceback
+        return Result(Verdict.BAD_INPUT, f'{e}（本次未检查，结论不含该周）', [f'✗ {e}'])
     if res is None:                       # 文件不存在
         return Result(Verdict.FAIL,
                       f'{args.week} 周观点尚未生成（无文件，不是覆盖不足）  ❌', lines)
