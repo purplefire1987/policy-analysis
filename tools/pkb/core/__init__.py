@@ -29,7 +29,7 @@ from .md import (                                     # noqa: F401
     similar, iso_week, parse_date, span,
 )
 from .report import (                                 # noqa: F401
-    ok, err, warn, info, section,
+    ok, err, warn, info, section, banner,
     SUMMARY_MARK, summary, Verdict, Result, Reporter,
 )
 
@@ -54,6 +54,6 @@ __all__ = [
     'SECTION_HEAD', 'extract_sections', 'md_section_lines', 'table_rows',
     'similar', 'iso_week', 'parse_date', 'span',
     # 输出与判定
-    'ok', 'err', 'warn', 'info', 'section',
+    'ok', 'err', 'warn', 'info', 'section', 'banner',
     'SUMMARY_MARK', 'summary', 'Verdict', 'Result', 'Reporter',
 ]

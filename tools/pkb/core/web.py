@@ -23,7 +23,6 @@ from urllib.parse import unquote, urljoin
 UA = ('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 '
       '(KHTML, like Gecko) Version/17.0 Safari/605.1.15')
 CHARSET = re.compile(rb'charset=["\']?([\w-]+)', re.I)
-TITLE = re.compile(r'(?is)<title[^>]*>(.*?)</title>')
 NOISE = re.compile(r'^(字号|打印|分享|收藏|扫一扫|返回|首页|网站地图|关于我们|联系我们|'
                    r'版权|主办|承办|技术支持|ICP|京ICP|政府网|客户端|微信|微博|无障碍|'
                    r'责任编辑|编辑|来源|上一篇|下一篇|相关阅读|相关链接|热点推荐|相关稿件|'
@@ -98,11 +97,6 @@ def decode(body):
         return body.decode(enc, 'ignore')
     except LookupError:
         return body.decode('utf-8', 'ignore')
-
-
-def page_title(h):
-    m = TITLE.search(h)
-    return re.sub(r'\s+', ' ', htmllib.unescape(m.group(1))).strip() if m else ''
 
 
 def _plain(block):

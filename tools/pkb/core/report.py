@@ -33,6 +33,17 @@ def section(title):
     print(f'\n【{title}】')
 
 
+def banner(title):
+    """动作输出的整屏横幅（`\n====` / 标题 / `====`）。
+
+    为什么在共用层：`check`／`fix`／`list` 三个动作原本各写一份一模一样的
+    四行函数——改宽度要改三处，漏一处就两种宽度并存。
+    """
+    print('\n' + '=' * 62)
+    print(title)
+    print('=' * 62)
+
+
 # 摘要行契约：每个 check 脚本结束前输出一行 `▸摘要: …`，
 # `run.py check` 只抓这一行（抓不到才退回正则）。
 # 为什么要有契约：2026-10-25 前入口靠「第一行含覆盖率/OK 等词」猜摘要，
@@ -111,7 +122,3 @@ class Reporter:
         out += [f'  ✗  [{i}] {m}' for i, m in self.errors]
         out += [f'  ·  [{i}] {m}' for i, m in self.warns]
         return out
-
-    def render(self, quiet=False):
-        for line in self.to_lines(quiet):
-            print(line)

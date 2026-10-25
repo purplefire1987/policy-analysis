@@ -15,13 +15,7 @@
 """
 import importlib
 
-from pkb.core import action_names
-
-
-def head(title):
-    print('\n' + '=' * 62)
-    print(title)
-    print('=' * 62)
+from pkb.core import action_names, banner
 
 
 def first_line(mod):
@@ -34,7 +28,7 @@ def run(argv=None):
     from pkb.checks import REGISTRY
 
     names = action_names()
-    head('工具目录清单')
+    banner('工具目录清单')
     print('\n入口')
     print(f'  run.py                    统一入口（{len(names)} 个动作，跑 `run.py --help` 看全部）')
 

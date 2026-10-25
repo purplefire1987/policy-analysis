@@ -14,16 +14,11 @@
 import re
 
 from pkb.checks import REGISTRY
+from pkb.core import banner
 
 from . import link as link_action
 from . import _snapshot as snapshot, sources as sources_action
 from ._proc import capture
-
-
-def head(title):
-    print('\n' + '=' * 62)
-    print(title)
-    print('=' * 62)
 
 
 def _step_snapshot(step):
@@ -64,7 +59,7 @@ def _step_link(step):
 
 
 def _conclude(changed):
-    head('修复结论')
+    banner('修复结论')
     print(f'本轮自动修改 {changed} 处。')
     print('\n仍需人工判断（脚本不猜，猜了就是编造）：')
     print('  · 观点覆盖率欠账 —— 要联网检索，属采集活')
@@ -77,7 +72,7 @@ def _conclude(changed):
 
 
 def run(argv=None):
-    head('一次性修复')
+    banner('一次性修复')
     changed = 0
     step = 0
 

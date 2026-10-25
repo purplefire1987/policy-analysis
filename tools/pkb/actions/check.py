@@ -11,7 +11,7 @@
 """
 import re
 
-from pkb.core import Result, Verdict
+from pkb.core import Result, Verdict, banner
 from pkb.checks import REGISTRY
 
 from . import _snapshot as snapshot
@@ -19,12 +19,6 @@ from ._proc import capture
 
 SUMMARY_MARK = '▸摘要:'          # 与 core.report 同一契约，这里只用于回显明细尾部
 WEEK_RE = re.compile(r'\d{4}-W\d{2}$')
-
-
-def head(title):
-    print('\n' + '=' * 62)
-    print(title)
-    print('=' * 62)
 
 
 def route_args(spec, rest):
@@ -131,7 +125,7 @@ def missed_args(rest, routed):
 
 
 def conclude(bad, missed):
-    head('自检结论')
+    banner('自检结论')
     if bad:
         print(f'❌ {len(bad)} 个检查未通过：{", ".join(bad)}')
         print('   处置：先跑 `python3 tools/run.py fix` 自动修复；')
@@ -147,7 +141,7 @@ def conclude(bad, missed):
 
 def run(rest=None):
     only, full, rest = parse_args(rest)
-    head('全量自检' if not only else f'自检（只跑匹配 {only} 的脚本）')
+    banner('全量自检' if not only else f'自检（只跑匹配 {only} 的脚本）')
 
     specs = pick_specs(only)
     if specs is None:

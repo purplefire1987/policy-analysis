@@ -44,13 +44,5 @@ REGISTRY = (
 )
 
 
-def all_flags():
-    """全部检查合计认领的参数（用于「参数无人认领」告警）。"""
-    out = set()
-    for s in REGISTRY:
-        out |= set(s.flags)
-    return out
-
-
 def names():
     return [s.name for s in REGISTRY]
