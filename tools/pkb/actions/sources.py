@@ -182,7 +182,12 @@ def run(argv=None):
         print(f'  {a[1]:22s} {a[0]:34s} {a[2]}')
     if len(log) > 40:
         print(f'  ……另有 {len(log)-40} 项')
-    # 落盘报告（工作区路径同样只在 lib.py 定义一次）
+    # 落盘报告：**只有真动了东西才写**。0 命中时写一张「动作 0 项」的空报告，
+    # 等于每跑一次 fix（它会带 --dry-run 调本动作）就在工作区根目录留一张废纸——
+    # 没人读的产物就没人删，攒着就是噪音。路径同样只在 pkb/core/paths.py 定义一次。
+    if not log:
+        print('\n无违规，不落盘报告（空报告没有可读信息）')
+        return 0
     rep = WORKSPACE / '来源清理报告.md'
     rep.write_text('# 来源违规清理报告\n\n'
                    f'{"" if dry else "已执行"}　动作 {len(log)} 项，文件 {touched} 个\n\n'
