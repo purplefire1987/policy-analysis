@@ -26,6 +26,54 @@ def head(title):
     print('=' * 62)
 
 
+def _step_snapshot(step):
+    """2. 快照刷新：结构修复改过 frontmatter 数值，index 的统计要重算。"""
+    code, out = capture(snapshot.run)
+    n = re.findall(r'(\d+)\s*处(?:更新|差异)', out)
+    print(f'[{step}] 快照刷新            退出码 {code}'
+          + (f'，更新 {n[-1]} 处' if n else '，无变化（幂等）'))
+    return int(n[-1]) if n else 0
+
+
+def _step_sources(step):
+    """3. 来源清理（只在真有违规时才写盘，平时是 no-op）。"""
+    code, out = capture(sources_action.run, ['--dry-run'])
+    hits = re.findall(r'命中\s*(\d+)', out) or re.findall(r'(\d+)\s*条', out)
+    if hits and int(hits[0]) > 0:
+        code2, _ = capture(sources_action.run, ['--apply'])
+        print(f'[{step}] 来源清理            清理 {hits[0]} 条违规链接，退出码 {code2}')
+        return int(hits[0])
+    print(f'[{step}] 来源清理            无违规链接（跳过）')
+    return 0
+
+
+def _step_export(step):
+    """4. 专家包副本同步：副本漂移是纯下游问题，保持同源不需要判断。"""
+    code, out = capture(export_action.run)
+    m = re.search(r'新增\s*(\d+)｜更新\s*(\d+)｜未变\s*(\d+)｜清理\s*(\d+)', out)
+    if not m:
+        print(f'[{step}] 副本同步            退出码 {code}')
+        return 0
+    added, updated, same, removed = (int(x) for x in m.groups())
+    print(f'[{step}] 副本同步            退出码 {code}'
+          + (f'，更新 {updated} 个脚本' if updated or added or removed
+             else '，与 tools 同源（无需同步）'))
+    return updated + added
+
+
+def _conclude(changed):
+    head('修复结论')
+    print(f'本轮自动修改 {changed} 处。')
+    print('\n仍需人工判断（脚本不猜，猜了就是编造）：')
+    print('  · 观点覆盖率欠账 —— 要联网检索，属采集活')
+    print('  · 信号断档补采 —— 过了日期补不回来，属采集活')
+    print('  · 字段取值异常（影响/领域/tags）—— 涉及判断')
+    print('  · 跨链归属错位 —— 只报告不移动')
+    print('  · 文档口径冲突（含 AGENTS／README／专家定义各说一套）—— 改哪一份须问用户')
+    print('\n修完请再跑一次 `python3 tools/run.py check` 确认归零。')
+    return 0
+
+
 def run(argv=None):
     head('一次性修复')
     changed = 0
@@ -43,45 +91,10 @@ def run(argv=None):
                 print('      ' + line.strip()[:96])
         changed += n
 
-    # 2. 快照刷新：结构修复改过 frontmatter 数值，index 的统计要重算
     step += 1
-    code, out = capture(snapshot.run)
-    n = re.findall(r'(\d+)\s*处(?:更新|差异)', out)
-    print(f'[{step}] 快照刷新            退出码 {code}'
-          + (f'，更新 {n[-1]} 处' if n else '，无变化（幂等）'))
-    changed += int(n[-1]) if n else 0
-
-    # 3. 来源清理（只在真有违规时才写盘，平时是 no-op）
+    changed += _step_snapshot(step)
     step += 1
-    code, out = capture(sources_action.run, ['--dry-run'])
-    hits = re.findall(r'命中\s*(\d+)', out) or re.findall(r'(\d+)\s*条', out)
-    if hits and int(hits[0]) > 0:
-        code2, _ = capture(sources_action.run, ['--apply'])
-        print(f'[{step}] 来源清理            清理 {hits[0]} 条违规链接，退出码 {code2}')
-        changed += int(hits[0])
-    else:
-        print(f'[{step}] 来源清理            无违规链接（跳过）')
-
-    # 4. 专家包副本同步：副本漂移是纯下游问题，保持同源不需要判断
+    changed += _step_sources(step)
     step += 1
-    code, out = capture(export_action.run)
-    m = re.search(r'新增\s*(\d+)｜更新\s*(\d+)｜未变\s*(\d+)｜清理\s*(\d+)', out)
-    if m:
-        added, updated, same, removed = (int(x) for x in m.groups())
-        print(f'[{step}] 副本同步            退出码 {code}'
-              + (f'，更新 {updated} 个脚本' if updated or added or removed
-                 else '，与 tools 同源（无需同步）'))
-        changed += updated + added
-    else:
-        print(f'[{step}] 副本同步            退出码 {code}')
-
-    head('修复结论')
-    print(f'本轮自动修改 {changed} 处。')
-    print('\n仍需人工判断（脚本不猜，猜了就是编造）：')
-    print('  · 观点覆盖率欠账 —— 要联网检索，属采集活')
-    print('  · 信号断档补采 —— 过了日期补不回来，属采集活')
-    print('  · 字段取值异常（影响/领域/tags）—— 涉及判断')
-    print('  · 跨链归属错位 —— 只报告不移动')
-    print('  · 文档口径冲突（含 AGENTS／README／专家定义各说一套）—— 改哪一份须问用户')
-    print('\n修完请再跑一次 `python3 tools/run.py check` 确认归零。')
-    return 0
+    changed += _step_export(step)
+    return _conclude(changed)

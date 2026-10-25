@@ -1,0 +1,46 @@
+name: ci
+
+# 为什么只跑单测与静态检查：
+# `run.py check` 是**库体检**（要真实知识库），CI 里没有库；这里守的是**代码本身**——
+# 分层不许反向、checks 不许 sys.exit、函数不许超 50 行、口径不许漂。
+# 库体检的守门人仍是自动化「政策知识库定期体检」（每 2 天 22:00），不是 CI。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 安装检查工具
+        run: python -m pip install --upgrade pip pyflakes pytest
+
+      - name: 静态检查（pyflakes 0 条）
+        working-directory: tools
+        run: python -m pyflakes run.py pkb/ tests/
+
+      # 空库是最强的契约输入：每项检查都会走「文件不存在」分支，
+      # 正好验证「任何输入都必须返回带摘要的 Result」——彩排抓到的两处漏摘要就在这条路径上。
+      - name: 单元测试（空库＝最坏输入）
+        working-directory: tools
+        env:
+          POLICY_KB_VAULT: /tmp/empty-vault
+          POLICY_KB_WORKSPACE: ${{ github.workspace }}
+        run: |
+          mkdir -p /tmp/empty-vault
+          python -m pytest -q tests
+
+      - name: 入口可执行性（--help 与未知动作）
+        working-directory: tools
+        run: |
+          python run.py --help > /dev/null
+          python run.py zzz || test $? -eq 2

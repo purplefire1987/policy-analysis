@@ -112,21 +112,13 @@ def parse_weekly_table(path):
     return rows, txt, lines, placeholders
 
 
-def check_week(week_str, verbose=True):
-    """校验一周。返回 (Verdict, res|None, lines)。文件不存在时 res 为 None。"""
-    mon, sun = week_window(week_str)
-    f = WEEKLY_DIR / f'周观点-{week_str}.md'
-    if not f.exists():
-        return Verdict.BAD_INPUT, None, [f'✗ 找不到文件：{f}']
+def _match(in_window, rows):
+    """窗口内政策 → 表内行。返回 (matched, used, orphan_rows, merged, undeclared)。
 
-    cards = load_cards()
-    in_window = [(d, t, c) for d, t, c in cards if mon.isoformat() <= d <= sun.isoformat()]
-    rows, txt, lines, placeholders = parse_weekly_table(f)
-
-    # 匹配：每个窗口内政策找最佳表格行
-    matched, orphan_rows = {}, []
-    used = set()
-    row_claims = {}          # 行号 -> 认领它的政策列表
+    一行被多条政策共用有两种可能：有意合并（需在表内注明「合并」），
+    或误匹配。这里只判定，不打印——渲染在 _render_problems 里一次做完。
+    """
+    matched, used, row_claims = {}, set(), {}
     for d, t, c in in_window:
         best, best_s, best_i = None, 0.0, None
         for idx, r in enumerate(rows):
@@ -137,100 +129,134 @@ def check_week(week_str, verbose=True):
             matched[(d, t)] = (best, best_s)
             used.add(best_i)
             row_claims.setdefault(best_i, []).append((d, t))
-    for idx, r in enumerate(rows):
-        if idx not in used:
-            orphan_rows.append(r)
-
-    missing = [(d, t, c) for d, t, c in in_window if (d, t) not in matched]
-    # 一行被多条政策共用：要么有意合并（需在表内注明），要么是误匹配
+    orphan = [r for idx, r in enumerate(rows) if idx not in used]
     merged = {i: v for i, v in row_claims.items() if len(v) > 1}
-    # 未注明合并的判定必须在 verbose 之外做——否则 --all 永远看不到它
-    # （2026-10-25 前这里只写在打印分支里，同一判据两种结果）
-    undeclared_merge = [rows[i] for i in merged if '合并' not in rows[i]['政策']]
+    undeclared = [rows[i] for i in merged if '合并' not in rows[i]['政策']]
+    return matched, used, orphan, merged, undeclared
 
-    # 数字对账
+
+def _reconcile(txt, rows):
+    """数字对账：正文声明数、frontmatter 政策数、分领域合计。
+
+    三个数都可能没写（返回 None）；没写不算错，写了就必须与表内行数相等。
+    """
     declared = None
     for pat in (r'表内\s*([0-9]+)\s*行', r'^政策数[:：]\s*([0-9]+)\s*$', r'本周\s*([0-9]+)\s*项'):
-        mdecl = re.search(pat, txt, re.M)
-        if mdecl:
-            declared = int(mdecl.group(1))
+        m = re.search(pat, txt, re.M)
+        if m:
+            declared = int(m.group(1))
             break
     fm = re.search(r'^政策数[:：]\s*([0-9]+)\s*$', txt, re.M)
     fm_count = int(fm.group(1)) if fm else None
-    dom_re = '|'.join(STAT_DOMAINS)
-    dist = re.findall(rf'({dom_re})\s*([0-9]+)\s*项', txt)
+    dist = re.findall(rf'({'|'.join(STAT_DOMAINS)})\s*([0-9]+)\s*项', txt)
     dist_sum = sum(int(v) for _, v in dist) if dist else None
+    return declared, fm_count, dist, dist_sum
 
-    ok = True
-    if missing:
-        ok = False
-    if orphan_rows or placeholders or undeclared_merge:
-        ok = False
-    if declared is not None and declared != len(rows):
-        ok = False
-    if fm_count is not None and fm_count != len(rows):
-        ok = False
-    if dist_sum is not None and dist_sum != len(rows):
-        ok = False
+
+def _ok(ctx):
+    """任一类问题存在即不通过。判据只此一处，渲染不再重算。"""
+    n = len(ctx['rows'])
+    if ctx['missing'] or ctx['orphans'] or ctx['placeholders'] or ctx['undeclared']:
+        return False
+    for key in ('declared', 'fm_count', 'dist_sum'):
+        if ctx[key] is not None and ctx[key] != n:
+            return False
+    return True
+
+
+def _render_problems(ctx):
+    """漏项、合并行、占位行、错位行——四类「表格长得不对」。"""
+    out = []
+    if ctx['missing']:
+        out.append(f'❌ 漏列 {len(ctx["missing"])} 项（窗口内有、表里没有）：')
+        for d, t, c in ctx['missing']:
+            field = FIELD_MAP.get(c, '?')
+            out.append(f'   [{d}] [{field} / {c}] {t}')
+            out.append(f'      → 建议行：| {field} | {t} | （待补核心要点） | （待补变化点） | （待补影响） |')
+    else:
+        out.append('✅ 无漏项')
+    out.append('')
+    if ctx['merged']:
+        out.append(f'📎 合并行 {len(ctx["merged"])} 处（同一行覆盖多条政策，须在表内注明「合并」）：')
+        for i, pols in ctx['merged'].items():
+            mark = '✅ 已注明合并' if '合并' in ctx['rows'][i]['政策'] else '❌ 未注明合并'
+            out.append(f'   第 {ctx["rows"][i]["line"]} 行「{ctx["rows"][i]["政策"][:40]}」'
+                       f'← 认领 {len(pols)} 项  [{mark}]')
+            for d, t in pols:
+                out.append(f'      · [{d}] {t}')
+        out.append('')
+    if ctx['placeholders']:
+        out.append(f'🧹 表内占位废行 {len(ctx["placeholders"])} 行（须删除，不得用空行凑领域）：')
+        for r in ctx['placeholders']:
+            out.append(f'   第 {r["line"]} 行 {r["政策"]}')
+        out.append('')
+    if ctx['orphans']:
+        out.append(f'⚠️ 表内 {len(ctx["orphans"])} 行无法对应到窗口内政策（可能是窗口外错位或重复）：')
+        for r in ctx['orphans']:
+            out.append(f'   第 {r["line"]} 行 | {r["领域"]} | {r["政策"]}')
+    else:
+        out.append('✅ 无错位/多余行')
+    out.append('')
+    return out
+
+
+def _render_numbers(ctx):
+    """数字对账三行：正文声明数、frontmatter 政策数、分领域合计。"""
+    n = len(ctx['rows'])
+    declared, dist, dist_sum = ctx['declared'], ctx['dist'], ctx['dist_sum']
+    out = ['数字对账：', f'  表内实际行数 = {n}']
+    out.append(f'  正文声明数   = {declared if declared is not None else "（未声明）"}'
+               + ('  ✅' if declared == n else '  ❌ 不一致' if declared is not None else ''))
+    if ctx['fm_count'] is not None:
+        out.append(f'  frontmatter 政策数 = {ctx["fm_count"]}'
+                   + ('  ✅' if ctx['fm_count'] == n else '  ❌ 与表内行数不一致'))
+    elif declared is not None and declared == n:
+        out.append('  frontmatter 政策数 = （未设置，建议补）')
+    if dist:
+        detail = ' + '.join(f'{k}{v}' for k, v in dist)
+        out.append(f'  分领域合计   = {detail} = {dist_sum}'
+                   + ('  ✅' if dist_sum == n else '  ❌ 不一致'))
+    out.append('')
+    return out
+
+
+def check_week(week_str, verbose=True):
+    """校验一周。返回 (Verdict, res|None, lines)。文件不存在时 res 为 None。"""
+    mon, sun = week_window(week_str)
+    f = WEEKLY_DIR / f'周观点-{week_str}.md'
+    if not f.exists():
+        return Verdict.BAD_INPUT, None, [f'✗ 找不到文件：{f}']
+
+    cards = load_cards()
+    in_window = [(d, t, c) for d, t, c in cards if mon.isoformat() <= d <= sun.isoformat()]
+    rows, txt, _lines, placeholders = parse_weekly_table(f)
+
+    matched, used, orphan, merged, undeclared = _match(in_window, rows)
+    declared, fm_count, dist, dist_sum = _reconcile(txt, rows)
+    missing = [(d, t, c) for d, t, c in in_window if (d, t) not in matched]
+
+    ctx = {'in_window': in_window, 'rows': rows, 'matched': matched, 'merged': merged,
+           'missing': missing, 'orphans': orphan, 'placeholders': placeholders,
+           'undeclared': undeclared, 'declared': declared, 'fm_count': fm_count,
+           'dist': dist, 'dist_sum': dist_sum}
+    ctx['ok'] = _ok(ctx)
 
     out = []
     if verbose:
-        out += [f'══ 周观点 {week_str} 覆盖度校验 ══',
-                f'窗口：{mon} ~ {sun}',
-                f'产业卡内政策：{len(in_window)} 项',
-                f'速览表行数：{len(rows)} 行',
-                f'成功匹配：{len(matched)} 项（占用表内 {len(used)} 行）',
-                '']
-        if missing:
-            out.append(f'❌ 漏列 {len(missing)} 项（窗口内有、表里没有）：')
-            for d, t, c in missing:
-                field = FIELD_MAP.get(c, '?')
-                out.append(f'   [{d}] [{field} / {c}] {t}')
-                out.append(f'      → 建议行：| {field} | {t} | （待补核心要点） | （待补变化点） | （待补影响） |')
-        else:
-            out.append('✅ 无漏项')
-        out.append('')
-        if merged:
-            out.append(f'📎 合并行 {len(merged)} 处（同一行覆盖多条政策，须在表内注明「合并」）：')
-            for i, pols in merged.items():
-                declared_merge = '合并' in rows[i]['政策']
-                mark = '✅ 已注明合并' if declared_merge else '❌ 未注明合并'
-                out.append(f'   第 {rows[i]["line"]} 行「{rows[i]["政策"][:40]}」← 认领 {len(pols)} 项  [{mark}]')
-                for d, t in pols:
-                    out.append(f'      · [{d}] {t}')
-            out.append('')
-        if placeholders:
-            out.append(f'🧹 表内占位废行 {len(placeholders)} 行（须删除，不得用空行凑领域）：')
-            for r in placeholders:
-                out.append(f'   第 {r["line"]} 行 {r["政策"]}')
-            out.append('')
-        if orphan_rows:
-            out.append(f'⚠️ 表内 {len(orphan_rows)} 行无法对应到窗口内政策（可能是窗口外错位或重复）：')
-            for r in orphan_rows:
-                out.append(f'   第 {r["line"]} 行 | {r["领域"]} | {r["政策"]}')
-        else:
-            out.append('✅ 无错位/多余行')
-        out.append('')
-        out.append('数字对账：')
-        out.append(f'  表内实际行数 = {len(rows)}')
-        out.append(f'  正文声明数   = {declared if declared is not None else "（未声明）"}'
-                   + ('  ✅' if declared == len(rows) else '  ❌ 不一致' if declared is not None else ''))
-        if fm_count is not None:
-            out.append(f'  frontmatter 政策数 = {fm_count}'
-                       + ('  ✅' if fm_count == len(rows) else '  ❌ 与表内行数不一致'))
-        elif declared is not None and declared == len(rows):
-            out.append('  frontmatter 政策数 = （未设置，建议补）')
-        if dist:
-            detail = ' + '.join(f'{k}{v}' for k, v in dist)
-            out.append(f'  分领域合计   = {detail} = {dist_sum}'
-                       + ('  ✅' if dist_sum == len(rows) else '  ❌ 不一致'))
-        out.append('')
-        out.append('✅ 校验通过' if ok else '❌ 校验未通过，请修正后重跑')
+        out = [f'══ 周观点 {week_str} 覆盖度校验 ══',
+               f'窗口：{mon} ~ {sun}',
+               f'产业卡内政策：{len(in_window)} 项',
+               f'速览表行数：{len(rows)} 行',
+               f'成功匹配：{len(matched)} 项（占用表内 {len(used)} 行）',
+               '']
+        out += _render_problems(ctx)
+        out += _render_numbers(ctx)
+        out.append('✅ 校验通过' if ctx['ok'] else '❌ 校验未通过，请修正后重跑')
 
-    return (Verdict.PASS if ok else Verdict.FAIL), {
+    return (Verdict.PASS if ctx['ok'] else Verdict.FAIL), {
         'week': week_str, 'in_window': in_window, 'rows': rows,
-        'missing': missing, 'orphans': orphan_rows, 'placeholders': placeholders,
-        'merged': merged, 'undeclared_merge': undeclared_merge,
+        'missing': missing, 'orphans': orphan, 'placeholders': placeholders,
+        'merged': merged, 'undeclared_merge': undeclared,
         'declared': declared, 'dist_sum': dist_sum,
     }, out
 

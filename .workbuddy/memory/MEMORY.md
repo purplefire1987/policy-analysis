@@ -27,15 +27,18 @@
 
 ## 四、tools（10-25 重构为四层，`tools/` 顶层只剩 `run.py`）
 
-- **分层单向**：`run.py → pkb.actions → pkb.checks → pkb.domain → pkb.core`。低层不许 import 高层，`core` 不许出现「政策」二字。
+- **分层单向**：`run.py → pkb.actions → pkb.checks → pkb.domain → pkb.core`。低层不许 import 高层。
+- **`core` 的规则（10-25 修订）**：`core` **不含口径**（名单/枚举/判据），但**可以有目录名与结构名**（`wiki/政策卡片`、`### 日期 · 标题`）——前者是「规则是什么」，后者是「数据在哪」。原文「不许出现『政策』二字」与必需的路径常量直接冲突，已废。判据是「与 domain 某取值同值」，不是「出现某个词」。
 - `pkb/core/`：paths（唯一路径，`TOOLS = parents[2]`）／fs（`py_files(TOOLS)` 是「哪些文件该导出/校验」唯一出口）／fm／md／report（`Verdict` 枚举 + `Result`，**`summary` 无默认值**→「有退出码没摘要」写不出来；`Reporter.to_lines()`）。
 - `pkb/domain/`：blacklist（`BLACK`／`BAD_SUBJECT`／`DOC_MUST_MENTION`／`is_bad`）／fields（五领域等枚举）／chains（`FIELD_MAP`）／legacy（`LEGACY_WEEKS`）。**口径只能住这里**。
-- `pkb/checks/`：6 项 + `REGISTRY`（`Spec(name, module, needs_all, flags, fixable)`）。**注册表即清单**，不再按文件名发现；`run()` 返回 `Result`、不打印、不 `sys.exit`。
+- `pkb/checks/`：**7 项** + `REGISTRY`（`Spec(name, module, needs_all, flags, fixable)`）。**注册表即清单**，不再按文件名发现；`run()` 返回 `Result`、不打印、不 `sys.exit`。
+- **`check_health.py`（10-25 新增）**：采集健康三分状态——`正常`／`已跑但 0 新增`（没采到，别重跑自动化）／`根本没跑`（超 1 天节拍）。另交叉核对「采集灯 vs 日志」（矛盾即 FAIL）与「0 也写 0」（**固定生效日 2026-10-24**，更早的 `—` 只提示；不用滑动窗口，否则违规拖两周自动消失）。
 - `pkb/actions/`：8 个动作 + `_proc`（`sh`／`capture` 用 `redirect_stdout` 抓子步骤数字）。
 - **摘要行契约**：`Result.summary` 就是 `▸摘要`；明细在 `Result.lines`，打多少由 `actions/check.py` 一层决定（`--only`／`--full`）。
 - 动作 8 个：`status／check／fix／plan／week／export／sources／list`。参数按**真注册**判定，无认领 **exit 2** 并明说结论不含该窗口。扩展方式见 AGENTS 第十节四条（改注册表，不靠命名）。
 - `check_docs` 新增**口径单源扫描**：`ast` 取代码里的字符串常量，与 `pkb.domain.__all__` 现读的词典比对，命中即 exit 1；`REQUIRED_FIELDS`（字段名＝读数据的键）排除。词典不另写，domain 加一项自动覆盖。
-- `tests/`（41 条）：`test_md`（解析）／`test_rules`（口径＋扫描器自测）／`test_smoke`（`Result` 契约、非法输入是 `BAD_INPUT`、导入无副作用、分层不反向、checks 不 `sys.exit`）。
+- `tests/`（**53 条**）：`test_md`（解析）／`test_rules`（口径＋扫描器自测）／`test_health`（三分状态、灯矛盾、无轮次、0也写0）／`test_smoke`（`Result` 契约、非法输入是 `BAD_INPUT`、导入无副作用、分层不反向、checks 不 `sys.exit`、**单函数 ≤50 行**）。
+- **CI（10-25 挂上）**：`.github/workflows/ci.yml`，每次 push/PR 跑 pyflakes ＋ **空库** pytest（`POLICY_KB_VAULT` 指空目录＝最强契约输入，六项检查全走「文件不存在」分支）。CI **不跑** `run.py check`（要真库，守门人是体检自动化）。
 - `fix` 只修快照、frontmatter 数值、唯一相似断链（≥0.85 单候选）、黑名单来源、副本同步；跳过 log.md；多候选不猜。
 
 ## 五、踩过的坑

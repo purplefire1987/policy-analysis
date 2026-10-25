@@ -72,6 +72,32 @@ def body_of(dirpath, sec, limit=None):
     return chunk
 
 
+def _print_index(week, lo, sun, cards, sigs, existing):
+    """索引与行号：政策小节与信号条目各列一遍，这是写周观点的主材。"""
+    print(f'{week}（{lo} ~ {sun}）  周观点已存在：{"是" if existing.exists() else "否"}')
+    print(f'\n政策小节 {len(cards)} 个（速览表逐条列入，不得取舍）：')
+    for s in cards:
+        print(f'  {s["date"]} · {s["title"]}')
+        print(f'      → {s["file"]}:{s["start"]}-{s["end"]}'
+              + (f'（{s["end"] - s["start"] + 1} 行）'))
+    print(f'\n信号条目 {len(sigs)} 个（第二节全部列入，不得只挑重要的）：')
+    for s in sigs:
+        print(f'  {s["date"]} · {s["title"]}')
+        print(f'      → {s["file"]}:{s["start"]}-{s["end"]}')
+
+
+def _print_full(cards, sigs, limit):
+    """--full：连小节正文一起打，省掉逐个文件跳转。"""
+    print('\n' + '=' * 58 + '\n政策正文\n' + '=' * 58)
+    for s in cards:
+        print(f'\n--- {s["date"]} · {s["title"]}（{s["file"]}）')
+        print(body_of(CARD_DIR, s, limit))
+    print('\n' + '=' * 58 + '\n信号正文\n' + '=' * 58)
+    for s in sigs:
+        print(f'\n--- {s["date"]} · {s["title"]}（{s["file"]}）')
+        print(body_of(SIGNAL_DIR, s, limit))
+
+
 def run(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument('week_pos', nargs='?', metavar='week', help='如 2026-W42')
@@ -106,26 +132,9 @@ def run(argv=None):
                          ensure_ascii=False, indent=1))
         return 0
 
-    print(f'{week}（{lo} ~ {sun}）  周观点已存在：{"是" if existing.exists() else "否"}')
-    print(f'\n政策小节 {len(cards)} 个（速览表逐条列入，不得取舍）：')
-    for s in cards:
-        print(f'  {s["date"]} · {s["title"]}')
-        print(f'      → {s["file"]}:{s["start"]}-{s["end"]}'
-              + (f'（{s["end"] - s["start"] + 1} 行）'))
-    print(f'\n信号条目 {len(sigs)} 个（第二节全部列入，不得只挑重要的）：')
-    for s in sigs:
-        print(f'  {s["date"]} · {s["title"]}')
-        print(f'      → {s["file"]}:{s["start"]}-{s["end"]}')
-
+    _print_index(week, lo, sun, cards, sigs, existing)
     if args.full:
-        print('\n' + '=' * 58 + '\n政策正文\n' + '=' * 58)
-        for s in cards:
-            print(f'\n--- {s["date"]} · {s["title"]}（{s["file"]}）')
-            print(body_of(CARD_DIR, s, args.limit))
-        print('\n' + '=' * 58 + '\n信号正文\n' + '=' * 58)
-        for s in sigs:
-            print(f'\n--- {s["date"]} · {s["title"]}（{s["file"]}）')
-            print(body_of(SIGNAL_DIR, s, args.limit))
+        _print_full(cards, sigs, args.limit)
 
     if not cards and not sigs:
         print('\n⚠ 窗口内既无政策也无信号。先查采集是否漏采（[[采集日志]]），'
@@ -136,4 +145,3 @@ def run(argv=None):
         print('\n（只给了索引与行号。按行号读那一段即可，不必整卡读——'
               '一整张卡可能有 3 万字符，一个 30 行小节只有 1 千。）')
     return 0
-

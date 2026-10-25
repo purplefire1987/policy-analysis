@@ -18,6 +18,10 @@ WORKSPACE = Path(os.environ.get('POLICY_KB_WORKSPACE',
 # 本文件在 tools/pkb/core/paths.py → 上溯两级才是 tools/
 TOOLS = Path(__file__).resolve().parents[2]
 
+# 目录名本身不是口径：它说的是「数据在哪」，不是「规则是什么」。
+# 所以「政策卡片」「政策信号」这类字出现在 core 属正常——路径只能在这里定义一次，
+# 换了库名就得改这里。真正的违规是名单/周号/域名（「金融强国」「2026-W40」「界面新闻」）
+# 出现在 core 或 checks/actions，那由 check_docs 的口径单源扫描判，词典从 pkb/domain 现读。
 CARD_DIR = VAULT / 'wiki' / '政策卡片'
 CHAIN_DIR = VAULT / 'wiki' / '政策链'
 SIGNAL_DIR = VAULT / 'wiki' / '政策信号'

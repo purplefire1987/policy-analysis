@@ -228,6 +228,67 @@ def check_expert_refs(docs):
         ok('专家定义：所有页面与路径引用有效')
 
 
+LOG_HEAD = re.compile(r'^(\d{4}-\d{2}-\d{2}) · (' + '|'.join(LOG_TYPES) + r') · (.+)$')
+
+
+def _log_heads(text):
+    """(全部行, 二级标题 [(行号, 标题)])。"""
+    lines = text.split('\n')
+    heads = [(i, l[3:].strip()) for i, l in enumerate(lines) if l.startswith('## ')]
+    return lines, heads
+
+
+def _new_entries(lines, heads):
+    """合规新条目及其后第一条历史条目的行号（用来判「新条目是否置顶」）。"""
+    out = []
+    for idx, (line_no, h) in enumerate(heads):
+        m = LOG_HEAD.match(h)
+        if not m:
+            continue
+        end = heads[idx + 1][0] if idx + 1 < len(heads) else len(lines)
+        out.append({'date': m.group(1), 'type': m.group(2), 'title': m.group(3),
+                    'lines': end - line_no - 1, 'line_no': line_no})
+    first_old = next((ln for ln, h in heads if not LOG_HEAD.match(h)), len(lines))
+    return out, first_old
+
+
+def _judge_new(entries, first_old):
+    """新格式条目：置顶、倒序、单条篇幅、类型白名单。顺序即报告顺序。"""
+    if not entries:
+        warn('log', '尚无合规新条目（格式 `## YYYY-MM-DD · 类型 · 一句话`）')
+        return
+    dates = [e['date'] for e in entries]
+    if dates != sorted(dates, reverse=True):
+        err('log', f'新格式条目未按日期倒序：{dates}')
+    late = [e for e in entries if e['line_no'] > first_old]
+    if late:
+        err('log', f'{len(late)} 条新格式条目被追加到历史条目之后，新条目应置顶')
+    over = [e for e in entries if e['lines'] > LOG_MAX_LINES]
+    for e in over:
+        err('log', f'{e["date"]} {e["title"][:20]} 占 {e["lines"]} 行，超过 {LOG_MAX_LINES} 行上限——'
+                   '报告应写在对应页面，log 只留结论与指针')
+    if not over and not late:
+        ok(f'log：{len(entries)} 条新格式条目，格式/倒序/篇幅均合规')
+    bad_type = [e for e in entries if e['type'] not in LOG_TYPES]
+    if bad_type:
+        err('log', f'{len(bad_type)} 条条目类型不在白名单')
+
+
+def _check_big_history(lines, heads):
+    """历史条目里的大块快照：只提示，不阻断（那是既成事实）。"""
+    big = []
+    for idx, (ln, h) in enumerate(heads):
+        if LOG_HEAD.match(h):
+            continue
+        end = heads[idx + 1][0] if idx + 1 < len(heads) else len(lines)
+        if end - ln - 1 > LOG_MAX_LINES:
+            big.append((ln, end - ln - 1))
+    if big:
+        warn('log', f'{len(big)} 条历史条目超过 {LOG_MAX_LINES} 行（最多一条 '
+                    f'{max(n for _, n in big)} 行，多为把整份报告贴进日志），'
+                    '建议降级为指针，不阻断')
+
+
 def check_log():
     if not LOG.exists():
         warn('log', '文件不存在')
@@ -237,11 +298,7 @@ def check_log():
     if size > LOG_MAX_BYTES:
         warn('log', f'{size / 1024:.0f} KB，超过 {LOG_MAX_BYTES // 1024} KB 上限——应分卷到 log-YYYY-MM.md')
 
-    lines = text.split('\n')
-    heads = [(i, l[3:].strip()) for i, l in enumerate(lines) if l.startswith('## ')]
-    new_pat = re.compile(r'^(\d{4}-\d{2}-\d{2}) · (' + '|'.join(LOG_TYPES) + r') · (.+)$')
-
-    # 标题重复（按完整标题比，不看日期前缀——同一天可以有多条不同类型的记录）
+    lines, heads = _log_heads(text)
     seen = {}
     for _, h in heads:
         seen[h] = seen.get(h, 0) + 1
@@ -250,49 +307,9 @@ def check_log():
         warn('log', f'完全重复的标题 {len(dup)} 组：{", ".join(d[:24] for d in dup[:3])}'
                     + ('…' if len(dup) > 3 else ''))
 
-    # 新格式条目
-    new_entries = []
-    for idx, (line_no, h) in enumerate(heads):
-        m = new_pat.match(h)
-        if not m:
-            continue
-        end = heads[idx + 1][0] if idx + 1 < len(heads) else len(lines)
-        new_entries.append({'date': m.group(1), 'type': m.group(2),
-                            'title': m.group(3), 'lines': end - line_no - 1,
-                            'line_no': line_no})
-
-    if not new_entries:
-        warn('log', '尚无合规新条目（格式 `## YYYY-MM-DD · 类型 · 一句话`）')
-    else:
-        dates = [e['date'] for e in new_entries]
-        if dates != sorted(dates, reverse=True):
-            err('log', f'新格式条目未按日期倒序：{dates}')
-        first_old = next((ln for ln, h in heads if not new_pat.match(h)), len(lines))
-        late = [e for e in new_entries if e['line_no'] > first_old]
-        if late:
-            err('log', f'{len(late)} 条新格式条目被追加到历史条目之后，新条目应置顶')
-        over = [e for e in new_entries if e['lines'] > LOG_MAX_LINES]
-        for e in over:
-            err('log', f'{e["date"]} {e["title"][:20]} 占 {e["lines"]} 行，超过 {LOG_MAX_LINES} 行上限——'
-                       '报告应写在对应页面，log 只留结论与指针')
-        if not over and not late:
-            ok(f'log：{len(new_entries)} 条新格式条目，格式/倒序/篇幅均合规')
-        bad_type = [e for e in new_entries if e['type'] not in LOG_TYPES]
-        if bad_type:
-            err('log', f'{len(bad_type)} 条条目类型不在白名单')
-
-    # 历史条目里的大块快照（只提示）
-    big = []
-    for idx, (ln, h) in enumerate(heads):
-        if new_pat.match(h):
-            continue
-        end = heads[idx + 1][0] if idx + 1 < len(heads) else len(lines)
-        if end - ln - 1 > LOG_MAX_LINES:
-            big.append((ln, end - ln - 1))
-    if big:
-        warn('log', f'{len(big)} 条历史条目超过 {LOG_MAX_LINES} 行（最多一条 '
-                    f'{max(n for _, n in big)} 行，多为把整份报告贴进日志），'
-                    '建议降级为指针，不阻断')
+    entries, first_old = _new_entries(lines, heads)
+    _judge_new(entries, first_old)
+    _check_big_history(lines, heads)
 
 
 def check_no_direct_calls():
@@ -557,11 +574,36 @@ def check_domain_literals():
         ok(f'口径单源：{len(guard)} 个取值只在 domain/ 出现（{len(files)} 个文件已扫）')
 
 
+def _load_docs():
+    """被交叉核对的那几份文档，一次读齐。缺哪份就传空串，由各检查自己判。"""
+    return {
+        'AGENTS': read(AGENTS, ''),
+        'index': read(INDEX, ''),
+        'README': read(README, ''),
+        '专家定义': read(EXPERT, ''),
+        '专家包README': read(EXPERT_DIR / 'README.md', ''),
+        '运行状态': read(STATUS, ''),
+    }
+
+
+def _conclude(quiet):
+    """结论：错误数与提示数只在这里成型，避免两处各算一遍。"""
+    lines = [] if quiet else ['=== 文档一致性与 log 校验 ===']
+    lines += _rep.to_lines(quiet=quiet)
+    if _rep.errors:
+        lines += ['', f'❌ {len(_rep.errors)} 项硬错误（{len(_rep.warns)} 条提示）']
+        return Result(Verdict.FAIL,
+                      f'文档一致性：{len(_rep.errors)} 项硬错误、{len(_rep.warns)} 条提示 ❌（改文档不改脚本）',
+                      lines)
+    lines += ['', f'✅ 文档一致 ✅（{len(_rep.warns)} 条提示）']
+    return Result(Verdict.PASS,
+                  f'文档一致性：0 硬错误、{len(_rep.warns)} 条提示 ✅（来源域名 0 命中）', lines)
+
+
 def run(argv=None):
     ap = argparse.ArgumentParser(description='文档一致性与 log 卫生校验')
     ap.add_argument('--quiet', action='store_true', help='只报问题')
     args = ap.parse_args(list(argv or []))
-    quiet = args.quiet
     if not AGENTS.exists() or not INDEX.exists():
         return Result(Verdict.BAD_INPUT, '路径错误：未找到 AGENTS.md 或 index.md',
                       ['路径错误：未找到 AGENTS.md 或 index.md'])
@@ -571,15 +613,7 @@ def run(argv=None):
     _rep.errors.clear()
     _rep.warns.clear()
 
-    docs = {
-        'AGENTS': read(AGENTS, ''),
-        'index': read(INDEX, ''),
-        'README': read(README, ''),
-        '专家定义': read(EXPERT, ''),
-        '专家包README': read(EXPERT_DIR / 'README.md', ''),
-        '运行状态': read(STATUS, ''),
-    }
-
+    docs = _load_docs()
     check_interval(docs)
     check_seven_sections(docs)
     check_analysis_sections(docs)
@@ -596,16 +630,4 @@ def run(argv=None):
     check_log()
     check_sources()
 
-    lines = []
-    if not quiet:
-        lines.append('=== 文档一致性与 log 校验 ===')
-    lines += _rep.to_lines(quiet=quiet)
-
-    if _rep.errors:
-        lines += ['', f'❌ {len(_rep.errors)} 项硬错误（{len(_rep.warns)} 条提示）']
-        return Result(Verdict.FAIL,
-                      f'文档一致性：{len(_rep.errors)} 项硬错误、{len(_rep.warns)} 条提示 ❌（改文档不改脚本）',
-                      lines)
-    lines += ['', f'✅ 文档一致 ✅（{len(_rep.warns)} 条提示）']
-    return Result(Verdict.PASS,
-                  f'文档一致性：0 硬错误、{len(_rep.warns)} 条提示 ✅（来源域名 0 命中）', lines)
+    return _conclude(args.quiet)

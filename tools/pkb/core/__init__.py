@@ -2,7 +2,9 @@
 # -*- coding: utf-8 -*-
 """pkb.core —— 无业务判断的通用件（路径、读写、frontmatter、Markdown、输出）。
 
-依赖规则：core 不许知道「政策」两个字，也不许 import 上层（domain/checks/actions）。
+依赖规则：core 不含口径（名单／枚举／判据），也不许 import 上层（domain/checks/actions）。
+目录名与结构名不算口径——`wiki/政策卡片` 是数据在哪，`### 日期 · 标题` 是长什么样；
+按字面词禁「政策」会连路径常量都写不出来，而路径本来就该只在这里定义一次。
 一旦口径进了共用层，改口径就要动代码，那是把规则藏进了实现。
 """
 from .paths import (                                  # noqa: F401

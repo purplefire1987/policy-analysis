@@ -10,6 +10,7 @@ sys.exit(2) 走人——入口那行就是空白，调用方以为「没输出 =
 跑法：python3 -m unittest discover -s tools/tests
 """
 import contextlib
+import ast
 import io
 import re
 import sys
@@ -104,6 +105,29 @@ class TestLayering(unittest.TestCase):
         for p in root.glob('*.py'):
             text = p.read_text(encoding='utf-8')
             self.assertIsNone(call.search(text), f'{p.name} 里出现了 sys.exit 调用')
+
+
+class TestFunctionSize(unittest.TestCase):
+    """可维护性门槛：一个函数超过 50 行，通常意味着它缝了两件事以上。
+
+    2026-10-25 拆分前有 13 个函数超标（最长 120 行），拆完是 0 个。
+    这条测试把它钉住——加功能时顺手写长，会在这里被拦下。
+    """
+    LIMIT = 50
+
+    def test_单函数不超过50行(self):
+        root = Path(__file__).resolve().parents[1]
+        files = [root / 'run.py'] + sorted((root / 'pkb').rglob('*.py'))
+        over = []
+        for p in files:
+            tree = ast.parse(p.read_text(encoding='utf-8'))
+            for node in ast.walk(tree):
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    n = node.end_lineno - node.lineno
+                    if n > self.LIMIT:
+                        over.append(f'{p.relative_to(root)}:{node.lineno} '
+                                    f'{node.name}() {n} 行')
+        self.assertEqual(over, [], '超过 %d 行：%s' % (self.LIMIT, '；'.join(over)))
 
 
 if __name__ == '__main__':

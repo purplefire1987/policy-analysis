@@ -105,12 +105,8 @@ def scan_fields():
     return tot, assoc, direc, both
 
 
-def report_all(pages):
-    today = datetime.date.today()
-    lines = ['=== 政策信号页状态 ===',
-             f'今天 {today}（{iso_week(today)}）｜共 {len(pages)} 页', '',
-             f'{"页":<16}{"条数":>5}  {"最近条目":<12}{"断档":>7}   状态',
-             '-' * 56]
+def _gap_rows(pages, today):
+    """每页的（页名, 条数, 最近条目, 断档天数），按断档从大到小排。"""
     rows = []
     for name, items in pages.items():
         if not items:
@@ -118,33 +114,47 @@ def report_all(pages):
             continue
         try:
             last = datetime.date.fromisoformat(items[0][0])
-            gap = (today - last).days
+            rows.append((name, len(items), last, (today - last).days))
         except ValueError:
             rows.append((name, len(items), None, 9999))
-            continue
-        rows.append((name, len(items), last, gap))
     rows.sort(key=lambda r: -r[3])
-    total = 0
-    buckets = {'≤7 天': 0, '8~14 天': 0, '15~30 天': 0, '>30 天或空': 0}
+    return rows
+
+
+def _gap_tag(gap):
+    """断档天数 → (分档名, 状态标注)。分档同时用于表格与「分布」行。"""
+    if gap <= 7:
+        return '≤7 天', '近'
+    if gap <= 14:
+        return '8~14 天', '⚠ 一周以上'
+    if gap <= 30:
+        return '15~30 天', '⚠ 半月以上'
+    return '>30 天或空', '✗ 空白'
+
+
+def _gap_block(rows):
+    """断档表与分布。返回 (lines, 条数合计, 分档计数)。"""
+    lines = [f'{"页":<16}{"条数":>5}  {"最近条目":<12}{"断档":>7}   状态', '-' * 56]
+    total, buckets = 0, {'≤7 天': 0, '8~14 天': 0, '15~30 天': 0, '>30 天或空': 0}
     for name, n, last, gap in rows:
         total += n
-        if gap <= 7:
-            buckets['≤7 天'] += 1
-            tag = '近'
-        elif gap <= 14:
-            buckets['8~14 天'] += 1
-            tag = '⚠ 一周以上'
-        elif gap <= 30:
-            buckets['15~30 天'] += 1
-            tag = '⚠ 半月以上'
-        else:
-            buckets['>30 天或空'] += 1
-            tag = '✗ 空白'
+        key, tag = _gap_tag(gap)
+        buckets[key] += 1
         lines.append(f'{name:<16}{n:>5}  {str(last or "—"):<12}'
                      f'{gap if gap < 9999 else "—":>7}   {tag}')
     lines.append('-' * 56)
     lines.append(f'合计 {total} 条')
     lines.append('分布：' + '｜'.join(f'{k} {v} 页' for k, v in buckets.items()))
+    return lines, total, buckets
+
+
+def report_all(pages):
+    """全页状态：断档表 + 分档 + 八字段完整率（恒 PASS，只报进度）。"""
+    today = datetime.date.today()
+    lines = ['=== 政策信号页状态 ===',
+             f'今天 {today}（{iso_week(today)}）｜共 {len(pages)} 页', '']
+    block, _total, buckets = _gap_block(_gap_rows(pages, today))
+    lines += block
     if buckets['>30 天或空']:
         lines.append(f'注：{buckets[">30 天或空"]} 页断档超 30 天，属历史空白（只报不阻断），'
                      '补采时按日期逐日扫，不按页是否"最旧"决定。')
@@ -157,6 +167,37 @@ def report_all(pages):
         lines.append('注：这两项是周观点第二节五列表的直接来源，缺了只能由写作者现场判断。'
                      '模板已于 2026-10-24 补齐（八字段），存量补录按任务台账批次推进，不阻断。')
     return Result(Verdict.PASS, f'信号 {tot} 条，八字段完整率 {both}/{tot}（{pct}）', lines)
+
+
+def _window_problems(hits, total, days, start, end):
+    """窗口期的三条判据 + 连续工作日空白。返回问题描述列表，空表示正常。"""
+    problems = []
+    if total == 0:
+        problems.append(f'窗口 {days} 天内 0 条信号')
+    if days >= 3 and total < days:
+        problems.append(f'日均不足 1 条（{total} 条 / {days} 天，近四周均值约 2.1~2.6 条/天）')
+    if days >= 3 and len(hits) < 3:
+        problems.append(f'仅 {len(hits)} 个页有新增（国常会、商务部发布会、金融口分属不同大类，'
+                        '正常应 ≥3 页）')
+
+    # 连续工作日空白：最直接定位漏采日
+    marked = {d for ds in hits.values() for d in ds}
+    blanks, run = [], []
+    cur = start
+    while cur <= end:
+        if cur.weekday() < 5 and cur.isoformat() not in marked:
+            run.append(cur)
+        else:
+            if len(run) >= 2:
+                blanks.append(run)
+            run = []
+        cur += datetime.timedelta(days=1)
+    if len(run) >= 2:
+        blanks.append(run)
+    if blanks:
+        seg = '、'.join(f'{r[0]}~{r[-1]}（{len(r)} 个工作日）' for r in blanks)
+        problems.append(f'连续工作日无信号：{seg}')
+    return problems
 
 
 def report_window(pages, start, end, label, quiet=False):
@@ -178,32 +219,7 @@ def report_window(pages, start, end, label, quiet=False):
             lines.append('  （无任何新增）')
         lines += ['', f'合计 {total} 条，覆盖 {len(hits)} / {len(pages)} 页']
 
-    problems = []
-    if total == 0:
-        problems.append(f'窗口 {days} 天内 0 条信号')
-    if days >= 3 and total < days:
-        problems.append(f'日均不足 1 条（{total} 条 / {days} 天，近四周均值约 2.1~2.6 条/天）')
-    if days >= 3 and len(hits) < 3:
-        problems.append(f'仅 {len(hits)} 个页有新增（国常会、商务部发布会、金融口分属不同大类，正常应 ≥3 页）')
-
-    # 连续工作日空白：最直接定位漏采日
-    marked = {d for ds in hits.values() for d in ds}
-    blanks, run = [], []
-    cur = start
-    while cur <= end:
-        if cur.weekday() < 5 and cur.isoformat() not in marked:
-            run.append(cur)
-        else:
-            if len(run) >= 2:
-                blanks.append(run)
-            run = []
-        cur += datetime.timedelta(days=1)
-    if len(run) >= 2:
-        blanks.append(run)
-    if blanks:
-        seg = '、'.join(f'{r[0]}~{r[-1]}（{len(r)} 个工作日）' for r in blanks)
-        problems.append(f'连续工作日无信号：{seg}')
-
+    problems = _window_problems(hits, total, days, start, end)
     if problems:
         lines += ['', '⚠️ 疑似漏采：']
         lines += [f'   · {p}' for p in problems]

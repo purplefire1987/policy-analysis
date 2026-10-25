@@ -3,7 +3,7 @@
 """Markdown 与日期解析：小节切块、表格抽取、日期换算、模糊匹配。
 
 这一层不认识「政策」，只认识「### 日期 · 标题」这种结构——
-core 不许出现业务词，判据在 domain/ 与各 check 里。
+core 不含口径（规则是什么），判据在 domain/ 与各 check 里；结构名不是口径。
 """
 import datetime
 import difflib

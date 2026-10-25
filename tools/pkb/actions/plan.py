@@ -189,27 +189,39 @@ def debt_cursor():
 
 # ────────────────────── 计算 ──────────────────────
 
-def plan(round_no=None, top=8):
-    cards = scan_cards()
-    sig = scan_signals()
-    wk = iso_week(TODAY)
-    chk = last_check()          # 领取闸门：最近一次体检运行日
+def _views(cards):
+    """① 观点：T+1 必清（新政策沉淀成欠账是最主要的漏口）＋存量。
 
+    分界就是「昨天」：昨天及今天新增的走必清，更早的进配额清单。
+    """
     a = [c for c in cards if c['state'] == 'a']
     b = [c for c in cards if c['state'] == 'b']
     c_ = [c for c in cards if c['state'] == 'c']
     total = len(cards)
     cov = (len(a) / total * 100) if total else 0.0
 
-    # ① 观点：T+1 必清（新政策沉淀成欠账是最主要的漏口）
-    fresh = sorted([x for x in b + c_ if d(x['date']) and
-                    d(x['date']) >= TODAY - datetime.timedelta(days=1)],
+    cut = TODAY - datetime.timedelta(days=1)
+    fresh = sorted([x for x in b + c_ if d(x['date']) and d(x['date']) >= cut],
                    key=lambda x: x['date'], reverse=True)
-    back = sorted([x for x in b + c_ if d(x['date']) and
-                   d(x['date']) < TODAY - datetime.timedelta(days=1)],
+    back = sorted([x for x in b + c_ if d(x['date']) and d(x['date']) < cut],
                   key=lambda x: (x['date'], x['card']))
 
-    # ② 政策断档
+    wk = iso_week(TODAY)
+    cur = next((x for x in debt_cursor() if x['week'] == wk), None)
+    done_wk = cur['done'] if cur else 0
+    return {'total': total, 'a': len(a), 'b': len(b), 'c': len(c_),
+            'cov': round(cov, 1), 'fresh': fresh, 'back': back,
+            'back_total': len(b) + len(c_), 'weekly_done': done_wk,
+            'weekly_need': max(0, VIEW_WEEKLY - done_wk),
+            'quota_today': VIEW_DAILY,
+            'weeks_left': round(max(1.0, (7 - TODAY.isoweekday() + 1) / 5.0), 1)}
+
+
+def _gap(chk):
+    """② 政策断档：短断档一轮补完，长断档分批且每批等一次体检。
+
+    领取闸门挂在体检节拍上——体检每 2 天一次，按周记会丢掉两次体检之间的机会。
+    """
     lr = last_round()
     gap = {'last': lr, 'days': (TODAY - lr).days if lr else None}
     if lr:
@@ -230,15 +242,15 @@ def plan(round_no=None, top=8):
                      'left_after': (TODAY - end).days, 'short': short,
                      'wait': (not short) and not claim_ok(claim, chk),
                      'claim': claim}
+    return gap, batch, cursor
 
-    # ③ 存量页队列
+
+def _stock(sig, chk):
+    """③ 存量页队列：断档超 STOCK_GAP 的信号页，每次体检后只释放一页。"""
     old = stock_rows()
     queue = []
     for page, info in sig.items():
-        if info['last']:
-            g = (TODAY - info['last']).days
-        else:
-            g = 9999
+        g = (TODAY - info['last']).days if info['last'] else 9999
         if g <= STOCK_GAP:
             continue
         first = (info['last'] + datetime.timedelta(days=1)) if info['last'] else None
@@ -258,13 +270,16 @@ def plan(round_no=None, top=8):
             'claimable': claim_ok(old.get(page, {}).get('claim'), chk),
         })
     queue.sort(key=lambda x: -x['gap'])
-    claim = [q for q in queue if q['claimable']]
+    claimed = [q for q in queue if q['claimable']]
     inq = {q['page'] for q in queue}
     stale = [p for p, v in old.items()
              if p not in inq and '✅' not in v.get('status', '')]
+    return queue, claimed, stale
 
-    # ④ 任务台账待办（负责环节＝采集）
-    todo = []
+
+def _todo():
+    """④ 任务台账待办：只取「负责环节＝采集」且未闭环的。"""
+    out = []
     for r in table_rows(section(read(TASKS), '未闭环项')):
         if len(r) < 6:
             continue
@@ -273,29 +288,26 @@ def plan(round_no=None, top=8):
             continue
         if '采集' not in r[4]:
             continue
-        todo.append({'id': r[0], 'found': r[1], 'issue': r[2],
-                     'type': r[3], 'status': status})
+        out.append({'id': r[0], 'found': r[1], 'issue': r[2],
+                    'type': r[3], 'status': status})
+    return out
 
-    dd = debt_cursor()
-    cur = next((x for x in dd if x['week'] == wk), None)
-    done_wk = cur['done'] if cur else 0
-    need = max(0, VIEW_WEEKLY - done_wk)
-    # 剩余学生周数估算
-    days = TODAY.isoweekday()
-    weeks_left = max(1.0, (7 - days + 1) / 5.0)
+
+def plan(round_no=None, top=8):
+    """四块欠账各自的取数与判定分开算，这里只负责拼装。"""
+    cards = scan_cards()
+    sig = scan_signals()
+    chk = last_check()          # 领取闸门：最近一次体检运行日
+    gap, batch, cursor = _gap(chk)
+    queue, claimed, stale = _stock(sig, chk)
 
     return {
-        'today': TODAY.isoformat(), 'week': wk, 'round': round_no,
+        'today': TODAY.isoformat(), 'week': iso_week(TODAY), 'round': round_no,
         'chk': chk,
-        'views': {'total': total, 'a': len(a), 'b': len(b), 'c': len(c_),
-                  'cov': round(cov, 1), 'fresh': fresh,
-                  'back': back, 'back_total': len(b) + len(c_),
-                  'weekly_done': done_wk, 'weekly_need': need,
-                  'quota_today': VIEW_DAILY,
-                  'weeks_left': round(weeks_left, 1)},
+        'views': _views(cards),
         'gap': gap, 'batch': batch, 'cursor': cursor,
-        'stock': queue, 'claim': claim, 'stale': stale,
-        'todo': todo,
+        'stock': queue, 'claim': claimed, 'stale': stale,
+        'todo': _todo(),
         'top': top,
     }
 
@@ -307,7 +319,7 @@ def tag(x):
             '缺辨析': '（缺「观点辨析」）'}.get(x.get('kind', ''), '')
 
 
-def pr(p):
+def pr_header(p):
     v = p['views']
     print(f'=== 派活清单 · {p["today"]}（{p["week"]}'
           + (f' · 第 {p["round"]} 轮' if p['round'] else '') + '）===')
@@ -315,50 +327,54 @@ def pr(p):
           f'无观点节 {v["c"]} / 共 {v["total"]}）')
     print()
 
-    # 顺序即执行顺序：断档 → 存量页 → 观点（T+1）→ 观点（存量）
+
+def pr_todo(p):
     print('【1·台账待办（负责环节＝采集）】' + ('无' if not p['todo'] else f'{len(p["todo"])} 项'))
     for t in p['todo']:
         print(f'  {t["id"]}｜{re.sub(r"[*`]", "", t["issue"])[:44]}｜{t["status"]}')
 
+
+def pr_gap(p):
     g = p['gap']
     if g['days'] is None:
         print('\n【2·政策断档】台账里找不到采集轮次记录 → 视为未知，按近 14 天全段覆盖')
-    elif g['days'] <= 1:
+        return
+    if g['days'] <= 1:
         print(f'\n【2·政策断档】上次采集 {g["last"]}（{g["days"]} 天前）→ 常规窗口，无断档')
+        return
+    print(f'\n【2·政策断档】上次采集 {g["last"]}，已断 {g["days"]} 天'
+          f'（{span(g["start"], TODAY)}）')
+    bt = p['batch']
+    if not bt:
+        print('  游标已补到今天，但台账日期仍落后 → 检查台账是否漏记')
+        return
+    if bt['short']:
+        print(f'  断档 ≤{GAP_TRIGGER} 天，本轮一次补完 {span(bt["start"], bt["end"])}'
+              f'（短断档不等体检，等两天反而把窗口拖长）')
+    elif bt['wait']:
+        print(f'  断档 >{GAP_TRIGGER} 天，按 {GAP_BATCH} 天/批推进；'
+              f'**本批等下次体检释放**（上次领取 {bt["claim"] or "—"}，'
+              f'体检 {p["chk"] or "未留痕"}）')
+        print('  → 本周期只补当日窗口，不要整段扫；体检跑完再补这一段')
     else:
-        print(f'\n【2·政策断档】上次采集 {g["last"]}，已断 {g["days"]} 天'
-              f'（{span(g["start"], TODAY)}）')
-        if p['batch']:
-            bt = p['batch']
-            if bt['short']:
-                print(f'  断档 ≤{GAP_TRIGGER} 天，本轮一次补完 {span(bt["start"], bt["end"])}'
-                      f'（短断档不等体检，等两天反而把窗口拖长）')
-            elif bt['wait']:
-                print(f'  断档 >{GAP_TRIGGER} 天，按 {GAP_BATCH} 天/批推进；'
-                      f'**本批等下次体检释放**（上次领取 {bt["claim"] or "—"}，'
-                      f'体检 {p["chk"] or "未留痕"}）')
-                print('  → 本周期只补当日窗口，不要整段扫；体检跑完再补这一段')
-            else:
-                print(f'  本批补 {span(bt["start"], bt["end"])}'
-                      f'（{GAP_BATCH} 天/批，补完还剩 {bt["left_after"]} 天）')
-            if not bt['wait']:
-                print('  补完把任务台账「断档补采游标」改成：')
-                print(f'  | {span(g["start"], TODAY)} | {g["days"]} | {bt["end"]} | '
-                      f'{bt["left_after"]} | {p["today"]} | '
-                      f'{"补采中" if bt["left_after"] else "✅ 已完成"} |')
-        else:
-            print('  游标已补到今天，但台账日期仍落后 → 检查台账是否漏记')
+        print(f'  本批补 {span(bt["start"], bt["end"])}'
+              f'（{GAP_BATCH} 天/批，补完还剩 {bt["left_after"]} 天）')
+    if not bt['wait']:
+        print('  补完把任务台账「断档补采游标」改成：')
+        print(f'  | {span(g["start"], TODAY)} | {g["days"]} | {bt["end"]} | '
+              f'{bt["left_after"]} | {p["today"]} | '
+              f'{"补采中" if bt["left_after"] else "✅ 已完成"} |')
 
+
+def pr_stock(p):
     q = p['stock']
     print(f'\n【3·存量补采队列（信号页断档 >{STOCK_GAP} 天）】{len(q)} 页'
           f'　|　每次体检后领 {CLAIM_PER_CHECK} 页（体检最近运行：{p["chk"] or "未留痕"}）')
-    if q:
-        for x in q:
-            flag = '← 本次领这页' if p['claim'] and x is p['claim'][0] else ''
-            got = (f'｜已领 {x["claim_date"]}'
-                   if x['claim_date'] else '')
-            print(f'  {x["page"]:<14}断档 {x["gap"]:>4} 天（最近 {x["last"] or "—"}，共 {x["n"]} 条）'
-                  f'{got} {flag}')
+    for x in q:
+        flag = '← 本次领这页' if p['claim'] and x is p['claim'][0] else ''
+        got = f'｜已领 {x["claim_date"]}' if x['claim_date'] else ''
+        print(f'  {x["page"]:<14}断档 {x["gap"]:>4} 天（最近 {x["last"] or "—"}，共 {x["n"]} 条）'
+              f'{got} {flag}')
     if p['claim']:
         x = p['claim'][0]
         print(f'  本周期窗口：{x["page"]} 页 {span(x["begin"], x["end"])}'
@@ -373,6 +389,9 @@ def pr(p):
         print(f'  可归档（断档已 ≤{STOCK_GAP} 天或已清零，把状态改 ✅）：'
               + '、'.join(p['stale']))
 
+
+def pr_views(p):
+    v = p['views']
     print(f'\n【4·观点·T+1 必清（昨日及今天新增）】{len(v["fresh"])} 个')
     for x in v['fresh']:
         print(f'  {x["card"]} → {x["date"]} · {x["title"][:40]}{tag(x)}')
@@ -388,6 +407,15 @@ def pr(p):
               f'{v["back_total"] // VIEW_DAILY + 1} 轮，按周目标 {VIEW_WEEKLY} 个约需 '
               f'{v["back_total"] / VIEW_WEEKLY:.1f} 周')
     print('\n注：T+1 必清优先于存量——新政策当天不闭环，就会变成明天的存量，欠账永远追不上。')
+
+
+def pr(p):
+    """输出顺序 ＝ 执行顺序：台账待办 → 断档 → 存量页 → 观点（T+1）→ 观点（存量）。"""
+    pr_header(p)
+    pr_todo(p)
+    pr_gap(p)
+    pr_stock(p)
+    pr_views(p)
     return 0
 
 

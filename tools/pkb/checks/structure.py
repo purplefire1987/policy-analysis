@@ -73,6 +73,45 @@ def load_all_md_names():
     return all_names()
 
 
+def _check_tags(name, fm, text):
+    """tags 必须是行内数组。解析结果看不出写法，所以要看 frontmatter 原文。"""
+    tags = fm.get('tags')
+    multiline = bool(re.search(r'(?m)^\s*tags\s*[:：]\s*\n\s*-\s', raw_fm_text(text)))
+    if multiline or not isinstance(tags, list):
+        add(issues, '1-frontmatter', name,
+            f'tags 写成 `{tags}`，不是行内 YAML 数组（应写 [政策]，单行 `- 政策` 的写法本库不收）')
+        return
+    if '政策' not in tags:
+        add(issues, '1-frontmatter', name, f'tags 缺基础标签「政策」：{tags}')
+    for t in tags:
+        if not re.fullmatch(r'[\w\u4e00-\u9fff]+', t):
+            add(issues, '1-frontmatter', name, f'tags 含脏值「{t}」')
+
+
+def _check_card_fields(name, fm, theme_words):
+    """字段完整性、三字段一致、受控词与枚举——一张卡的 frontmatter 判据。"""
+    for f in REQUIRED_FIELDS:
+        if f not in fm or fm[f] == '' or fm[f] == []:
+            if f in ('所属政策链',):          # 允许为空但会警告
+                add(warns, '1-frontmatter', name, f'字段「{f}」为空')
+            else:
+                add(issues, '1-frontmatter', name, f'缺少字段「{f}」')
+
+    for f in ('名称', '二级分类', '主题'):
+        if fm.get(f) and fm[f] != name:
+            add(issues, '1-frontmatter', name, f'「{f}」={fm[f]}，应为 {name}')
+
+    if theme_words and fm.get('主题') and fm['主题'] not in theme_words:
+        add(issues, '1-frontmatter', name, f'「主题」={fm["主题"]} 不在受控词表')
+
+    if fm.get('领域') and fm['领域'] not in DOMAINS:
+        add(issues, '1-frontmatter', name, f'「领域」={fm["领域"]} 不在允许值 {sorted(DOMAINS)}')
+    if fm.get('影响') and fm['影响'] not in IMPACTS:
+        add(issues, '1-frontmatter', name, f'「影响」={str(fm["影响"])[:24]} 不是 高/中/低')
+    if fm.get('状态') and fm['状态'] not in STATUSES:
+        add(issues, '1-frontmatter', name, f'「状态」={fm["状态"]} 不在允许值')
+
+
 def check_cards(theme_words):
     cards = {}
     for p in sorted(CARD_DIR.glob('*.md')):
@@ -91,44 +130,8 @@ def check_cards(theme_words):
                 f'{len(text)} 字符（≈{len(text) // 2} token），超 {CARD_SIZE_WARN} 提示线'
                 '——改卡时只读卡头 40 行即可定位插入点，不必全文读')
 
-        # 字段完整性
-        for f in REQUIRED_FIELDS:
-            if f not in fm or fm[f] == '' or fm[f] == []:
-                if f in ('所属政策链',):      # 允许为空但会警告
-                    add(warns, '1-frontmatter', name, f'字段「{f}」为空')
-                else:
-                    add(issues, '1-frontmatter', name, f'缺少字段「{f}」')
-
-        # 三字段一致
-        for f in ('名称', '二级分类', '主题'):
-            if fm.get(f) and fm[f] != name:
-                add(issues, '1-frontmatter', name, f'「{f}」={fm[f]}，应为 {name}')
-
-        # 主题词受控
-        if theme_words and fm.get('主题') and fm['主题'] not in theme_words:
-            add(issues, '1-frontmatter', name, f'「主题」={fm["主题"]} 不在受控词表')
-
-        # 枚举
-        if fm.get('领域') and fm['领域'] not in DOMAINS:
-            add(issues, '1-frontmatter', name, f'「领域」={fm["领域"]} 不在允许值 {sorted(DOMAINS)}')
-        if fm.get('影响') and fm['影响'] not in IMPACTS:
-            add(issues, '1-frontmatter', name, f'「影响」={str(fm["影响"])[:24]} 不是 高/中/低')
-        if fm.get('状态') and fm['状态'] not in STATUSES:
-            add(issues, '1-frontmatter', name, f'「状态」={fm["状态"]} 不在允许值')
-
-        # tags：本库只收行内数组写法 [政策]。parse_fm 会把多行 `- 政策`
-        # 也解析成 list，所以写法形式必须看 frontmatter 原文，不能只看解析结果。
-        tags = fm.get('tags')
-        multiline = bool(re.search(r'(?m)^\s*tags\s*[:：]\s*\n\s*-\s', raw_fm_text(text)))
-        if multiline or not isinstance(tags, list):
-            add(issues, '1-frontmatter', name,
-                f'tags 写成 `{tags}`，不是行内 YAML 数组（应写 [政策]，单行 `- 政策` 的写法本库不收）')
-        else:
-            if '政策' not in tags:
-                add(issues, '1-frontmatter', name, f'tags 缺基础标签「政策」：{tags}')
-            for t in tags:
-                if not re.fullmatch(r'[\w\u4e00-\u9fff]+', t):
-                    add(issues, '1-frontmatter', name, f'tags 含脏值「{t}」')
+        _check_card_fields(name, fm, theme_words)
+        _check_tags(name, fm, text)
 
     return cards
 
@@ -182,52 +185,42 @@ def check_sections(cards):
     return n_secs
 
 
-def check_chains(cards, theme_map):
-    chain_files = {}
-    for p in sorted(CHAIN_DIR.glob('*.md')):
-        chain = p.stem.replace('政策链-', '')
-        text = p.read_text(encoding='utf-8')
-        fm, body = parse_fm(text)
-        if not fm:
-            add(issues, '4-政策链', chain, '缺少 frontmatter')
-            continue
-        chain_files[chain] = {'fm': fm, 'body': body, 'path': p}
+def _check_chain_file(chain, fm, body, theme_map):
+    """一条链自身：主题匹配、双向链接、必备节、标题前空行。"""
+    words = fm.get('主题匹配')
+    if not isinstance(words, list):
+        add(issues, '4-政策链', chain, f'「主题匹配」不是数组写法：{words}')
+        words = []
+    expect = set(theme_map.get(chain, []))
+    if expect and set(words) != expect:
+        miss, extra = expect - set(words), set(words) - expect
+        if miss:
+            add(issues, '4-政策链', chain, f'主题匹配缺：{sorted(miss)}')
+        if extra:
+            add(issues, '4-政策链', chain, f'主题匹配多（词表无此项）：{sorted(extra)}')
 
-        words = fm.get('主题匹配')
-        if not isinstance(words, list):
-            add(issues, '4-政策链', chain, f'「主题匹配」不是数组写法：{words}')
-            words = []
-        expect = set(theme_map.get(chain, []))
-        if expect and set(words) != expect:
-            miss = expect - set(words)
-            extra = set(words) - expect
-            if miss:
-                add(issues, '4-政策链', chain, f'主题匹配缺：{sorted(miss)}')
-            if extra:
-                add(issues, '4-政策链', chain, f'主题匹配多（词表无此项）：{sorted(extra)}')
+    relink = set(re.findall(r'\[\[政策卡片-([^|\]]+)', body))
+    for w in words:
+        if w not in relink:
+            add(issues, '4-政策链', chain, f'「关联卡片」/正文缺 [[政策卡片-{w}]]')
+    for r in relink:
+        if r not in words:
+            add(issues, '4-政策链', chain, f'链接了 [[政策卡片-{r}]]，但它不在本链主题匹配中')
 
-        # 关联卡片节须链接每个下属卡
-        relink = set(re.findall(r'\[\[政策卡片-([^|\]]+)', body))
-        for w in words:
-            if w not in relink:
-                add(issues, '4-政策链', chain, f'「关联卡片」/正文缺 [[政策卡片-{w}]]')
-        for r in relink:
-            if r not in words:
-                add(issues, '4-政策链', chain, f'链接了 [[政策卡片-{r}]]，但它不在本链主题匹配中')
+    for sec in ('关联卡片', '时间轴', '变化轨迹', '政策信号新闻'):
+        if f'## {sec}' not in body:
+            add(issues, '4-政策链', chain, f'缺「## {sec}」节')
 
-        # 必备节
-        for sec in ('关联卡片', '时间轴', '变化轨迹', '政策信号新闻'):
-            if f'## {sec}' not in body:
-                add(issues, '4-政策链', chain, f'缺「## {sec}」节')
+    # 标题前应有空行（Markdown 渲染要求）
+    lines = body.split('\n')
+    for i, l in enumerate(lines):
+        if l.startswith('#') and i > 0 and lines[i - 1].strip() != '' and not lines[i - 1].startswith('#'):
+            add(issues, '4-政策链', chain, f'「{l[:30]}」前缺空行')
+            break
 
-        # 标题前应有空行（Markdown 渲染要求）
-        lines = body.split('\n')
-        for i, l in enumerate(lines):
-            if l.startswith('#') and i > 0 and lines[i - 1].strip() != '' and not lines[i - 1].startswith('#'):
-                add(issues, '4-政策链', chain, f'「{l[:30]}」前缺空行')
-                break
 
-    # 反向：卡片所属政策链 必须存在且其主题匹配含本卡
+def _check_chain_backlink(cards, chain_files):
+    """反向：卡片「所属政策链」必须存在，且该链的主题匹配里有本卡。"""
     for name, c in cards.items():
         raw = c['fm'].get('所属政策链', '')
         if isinstance(raw, list):          # 有卡写成数组形式，取第一项
@@ -245,6 +238,20 @@ def check_chains(cards, theme_map):
         if name not in words:
             add(issues, '4-政策链', name, f'所属 [[政策链-{chain}]] 的主题匹配里没有「{name}」')
 
+
+def check_chains(cards, theme_map):
+    chain_files = {}
+    for p in sorted(CHAIN_DIR.glob('*.md')):
+        chain = p.stem.replace('政策链-', '')
+        text = p.read_text(encoding='utf-8')
+        fm, body = parse_fm(text)
+        if not fm:
+            add(issues, '4-政策链', chain, '缺少 frontmatter')
+            continue
+        chain_files[chain] = {'fm': fm, 'body': body, 'path': p}
+        _check_chain_file(chain, fm, body, theme_map)
+
+    _check_chain_backlink(cards, chain_files)
     return chain_files
 
 
@@ -393,6 +400,59 @@ def run_fix():
     return n1 + n2, lines
 
 
+CATEGORY_LABELS = {
+    '1-frontmatter': '产业卡 frontmatter（字段/枚举/tags）',
+    '2-数值': '产业卡数值一致性（政策数/日期/跨度）',
+    '3-小节': '政策小节结构（标题/倒序/五要素）',
+    '4-政策链': '政策链双向一致',
+    '5-词表': '受控词表一致（index 第二节）',
+    '6-断链': 'wikilink 断链',
+    '8-统计': '索引与总览的统计数字',
+}
+
+
+def _collect():
+    """跑完全部结构判据，返回汇总所需的量。issues/warns 是模块级累积器。"""
+    issues.clear()
+    warns.clear()
+    theme_map, _ = load_theme_words()
+    theme_words = set(w for ws in theme_map.values() for w in ws)
+
+    cards = check_cards(theme_words)
+    check_numbers(cards)
+    n_secs = check_sections(cards)
+    check_chains(cards, theme_map)
+    check_theme_table(cards, theme_map, theme_words)
+    check_links(load_all_md_names())
+    check_stats(len(cards), n_secs)
+    return cards, n_secs, theme_words
+
+
+def _detail_lines(cards, n_secs, theme_words, quiet):
+    """按类别列出问题与警告。输出顺序＝CATEGORY_LABELS 的顺序。"""
+    lines = ['=== 政策知识库结构校验 ===',
+             f'产业卡 {len(cards)} 张 | 政策链 {len(list(CHAIN_DIR.glob("*.md")))} 条 | '
+             f'主题词 {len(theme_words)} 个 | 政策小节 {n_secs} 个', '']
+    for cat, label in CATEGORY_LABELS.items():
+        items = issues.get(cat, [])
+        mark = 'OK  ' if not items else f'{len(items):>3} '
+        lines.append(f'[{cat[0]}] {mark}{label}')
+        if items and not quiet:
+            for obj, msg in items[:25]:
+                lines.append(f'      · {obj}：{msg}')
+            if len(items) > 25:
+                lines.append(f'      …… 另有 {len(items) - 25} 条')
+
+    wt = sum(len(v) for v in warns.values())
+    if wt:
+        lines += ['', f'警告（不阻断）{wt} 条：']
+        for cat, items in warns.items():
+            for obj, msg in items[:15]:
+                lines.append(f'      · [{cat}] {obj}：{msg}')
+    lines.append('')
+    return lines
+
+
 def run(argv=None):
     ap = argparse.ArgumentParser(description='政策知识库结构校验器')
     ap.add_argument('--fix', action='store_true', help='自动修复数值与唯一候选断链')
@@ -406,52 +466,11 @@ def run(argv=None):
         return Result(Verdict.BAD_INPUT, '路径错误：未找到 wiki/政策卡片 或 wiki/政策链',
                       ['路径错误：未找到 wiki/政策卡片 或 wiki/政策链'])
 
-    issues.clear()
-    warns.clear()
-    theme_map, theme_words = load_theme_words()
-    theme_words = set(w for ws in theme_map.values() for w in ws)
-
-    cards = check_cards(theme_words)
-    check_numbers(cards)
-    n_secs = check_sections(cards)
-    check_chains(cards, theme_map)
-    check_theme_table(cards, theme_map, theme_words)
-    check_links(load_all_md_names())
-    check_stats(len(cards), n_secs)
-
-    labels = {
-        '1-frontmatter': '产业卡 frontmatter（字段/枚举/tags）',
-        '2-数值': '产业卡数值一致性（政策数/日期/跨度）',
-        '3-小节': '政策小节结构（标题/倒序/五要素）',
-        '4-政策链': '政策链双向一致',
-        '5-词表': '受控词表一致（index 第二节）',
-        '6-断链': 'wikilink 断链',
-        '8-统计': '索引与总览的统计数字',
-    }
-    lines = ['=== 政策知识库结构校验 ===',
-             f'产业卡 {len(cards)} 张 | 政策链 {len(list(CHAIN_DIR.glob("*.md")))} 条 | '
-             f'主题词 {len(theme_words)} 个 | 政策小节 {n_secs} 个', '']
-
-    total = 0
-    for cat, label in labels.items():
-        items = issues.get(cat, [])
-        total += len(items)
-        mark = 'OK  ' if not items else f'{len(items):>3} '
-        lines.append(f'[{cat[0]}] {mark}{label}')
-        if items and not args.quiet:
-            for obj, msg in items[:25]:
-                lines.append(f'      · {obj}：{msg}')
-            if len(items) > 25:
-                lines.append(f'      …… 另有 {len(items) - 25} 条')
-
+    cards, n_secs, theme_words = _collect()
+    lines = _detail_lines(cards, n_secs, theme_words, args.quiet)
+    total = sum(len(v) for v in issues.values())
     wt = sum(len(v) for v in warns.values())
-    if wt:
-        lines += ['', f'警告（不阻断）{wt} 条：']
-        for cat, items in warns.items():
-            for obj, msg in items[:15]:
-                lines.append(f'      · [{cat}] {obj}：{msg}')
 
-    lines.append('')
     if total == 0:
         lines.append('✅ 结构校验通过（观点覆盖率见 check_views.py，属欠账进度，不参与本判定）')
         return Result(Verdict.PASS,
