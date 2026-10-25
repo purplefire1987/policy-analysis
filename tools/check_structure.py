@@ -27,15 +27,11 @@ from collections import defaultdict
 
 from pkb.core import (VAULT, CARD_DIR, CHAIN_DIR, INDEX,
                  parse_fm, extract_sections, all_names, FM_RE, summary)
+from pkb.domain import DOMAINS, IMPACTS, STATUSES, REQUIRED_FIELDS, CARD_SIZE_WARN
 # 路径与通用件唯一定义处：pkb/core/paths.py（原先每个脚本各写一遍，改位置要动多处）
+# 口径（五领域/影响/状态/必填字段/体积线）唯一定义处：pkb/domain/fields.py
 THEME_FILE = INDEX   # 受控词表已并入 index.md 第二节（2026-10-24 三合一）
 
-DOMAINS = {'经济与金融', '科技与数字化', '社会与民生', '产业与能源', '总体规划'}
-IMPACTS = {'高', '中', '低'}
-STATUSES = {'有效', '待更新', '已废止', '仅供参考'}
-REQUIRED_FIELDS = ['类型', '名称', '领域', '二级分类', '主题', '发布日期', '政策数',
-                   '时间跨度', '关键词', '影响', '状态', '采集人', '所属政策链', 'tags']
-CARD_SIZE_WARN = 20000       # 单卡字符数提示线（≈1 万 token）：超过就该考虑压缩或归档
 
 issues = defaultdict(list)   # 类别 -> [(对象, 问题)]，阻断
 warns = defaultdict(list)    # 警告，不阻断

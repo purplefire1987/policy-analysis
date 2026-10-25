@@ -28,7 +28,7 @@ import sys
 from pkb.core import (VAULT, CARD_DIR, CHAIN_DIR, TEMPLATE_DIR, INDEX, AGENTS, README, LOG,
                  STATUS, LEDGER, EXPERT_MD, WEEK_TEMPLATE, OVERVIEW_DIR, TOOLS, EXPERT_DIR,
                  read, digest, py_files, Reporter, summary)
-from source_blacklist import BLACK  # 黑名单唯一定义处：source_blacklist.py
+from pkb.domain import BLACK  # 黑名单唯一定义处：pkb/domain/blacklist.py
 EXPERT = EXPERT_MD
 TEMPLATE = WEEK_TEMPLATE
 

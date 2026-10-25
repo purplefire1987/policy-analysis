@@ -17,7 +17,7 @@ import re
 import collections
 
 from pkb.core import WORKSPACE, VAULT  # 路径唯一定义处：pkb/core/paths.py
-from source_blacklist import BLACK, BAD_SUBJECT, is_bad  # 黑名单唯一定义处：source_blacklist.py
+from pkb.domain import BLACK, BAD_SUBJECT, is_bad  # 黑名单唯一定义处：pkb/domain/blacklist.py
 LINK = re.compile(r'\[([^\]]*)\]\((https?://[^)\s]+)\)')
 
 
