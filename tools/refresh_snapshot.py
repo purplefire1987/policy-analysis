@@ -25,7 +25,7 @@ import sys
 from collections import defaultdict
 from datetime import date
 
-from lib import CARD_DIR, INDEX  # 路径唯一定义处：lib.py
+from pkb.core import CARD_DIR, INDEX  # 路径唯一定义处：pkb/core/paths.py
 
 
 def collect():

@@ -24,7 +24,7 @@ import sys
 import re
 import datetime
 
-from lib import SIGNAL_DIR, iso_week, summary   # 路径与通用件唯一定义处：lib.py
+from pkb.core import SIGNAL_DIR, iso_week, summary   # 路径与通用件唯一定义处：pkb/core/paths.py
 DATE_LINE = re.compile(r'^### (\d{4}-\d{2}-\d{2}) · (.+?)\s*$', re.M)
 ISO_WEEK = re.compile(r'^(\d{4})-W(\d{2})$')
 

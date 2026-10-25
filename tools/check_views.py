@@ -14,7 +14,7 @@
 import argparse
 import sys
 
-from lib import CARD_DIR, extract_sections, summary
+from pkb.core import CARD_DIR, extract_sections, summary
 
 RED_LINE = 80.0
 

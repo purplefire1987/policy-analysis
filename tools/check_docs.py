@@ -25,9 +25,9 @@ import pathlib
 import re
 import sys
 
-from lib import (VAULT, CARD_DIR, CHAIN_DIR, TEMPLATE_DIR, INDEX, AGENTS, README, LOG,
+from pkb.core import (VAULT, CARD_DIR, CHAIN_DIR, TEMPLATE_DIR, INDEX, AGENTS, README, LOG,
                  STATUS, LEDGER, EXPERT_MD, WEEK_TEMPLATE, OVERVIEW_DIR, TOOLS, EXPERT_DIR,
-                 read, digest, Reporter, summary)
+                 read, digest, py_files, Reporter, summary)
 from source_blacklist import BLACK  # 黑名单唯一定义处：source_blacklist.py
 EXPERT = EXPERT_MD
 TEMPLATE = WEEK_TEMPLATE
@@ -413,11 +413,20 @@ def check_expert_scripts():
     except Exception as e:
         err('专家包', f'MANIFEST.json 无法解析：{e}')
         return
-    cur = {p.name: digest(p) for p in sorted(TOOLS.glob('*.py'))}
+    # 键是相对 tools/ 的 posix 路径——pkb/ 是包，不能再按文件名平铺比对
+    cur = {p.relative_to(TOOLS).as_posix(): digest(p) for p in py_files(TOOLS)}
     add = sorted(set(cur) - set(listed))
     gone = sorted(set(listed) - set(cur))
     diff = sorted(n for n in set(cur) & set(listed) if cur[n] != listed[n].get('sha256'))
-    if not (add or gone or diff):
+    # 副本里源已不存在的脚本：留着会让 `import lib` 拿到过期实现，同样算漂移
+    dest_root = skill / 'scripts'
+    stray = []
+    if dest_root.exists():
+        stray = sorted(p.relative_to(dest_root).as_posix()
+                       for p in dest_root.rglob('*.py')
+                       if '__pycache__' not in p.parts
+                       and p.relative_to(dest_root).as_posix() not in cur)
+    if not (add or gone or diff or stray):
         ok(f'专家包脚本与 tools 同源（{len(cur)} 个，哈希一致）')
         return
     for n in add:
@@ -426,6 +435,8 @@ def check_expert_scripts():
         err('专家包', f'包内有、tools 已无：{n}')
     for n in diff:
         err('专家包', f'内容已变（改了 tools 未同步）：{n}')
+    for n in stray:
+        err('专家包', f'包内残留（tools 已无）：{n}')
     err('专家包', '副本已漂移——跑 `run.py fix`（或 `run.py export`）自动同步，不要在专家包内直接改')
 
 

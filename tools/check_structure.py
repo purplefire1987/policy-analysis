@@ -25,9 +25,9 @@ import sys
 from pathlib import Path
 from collections import defaultdict
 
-from lib import (VAULT, CARD_DIR, CHAIN_DIR, INDEX,
+from pkb.core import (VAULT, CARD_DIR, CHAIN_DIR, INDEX,
                  parse_fm, extract_sections, all_names, FM_RE, summary)
-# 路径与通用件唯一定义处：lib.py（原先每个脚本各写一遍，改位置要动多处）
+# 路径与通用件唯一定义处：pkb/core/paths.py（原先每个脚本各写一遍，改位置要动多处）
 THEME_FILE = INDEX   # 受控词表已并入 index.md 第二节（2026-10-24 三合一）
 
 DOMAINS = {'经济与金融', '科技与数字化', '社会与民生', '产业与能源', '总体规划'}

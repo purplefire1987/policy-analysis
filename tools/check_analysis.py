@@ -23,7 +23,7 @@ import argparse
 import re
 import sys
 
-from lib import ANALYSIS_DIR, parse_fm, read, Reporter, summary  # 路径与通用件唯一定义处：lib.py
+from pkb.core import ANALYSIS_DIR, parse_fm, read, Reporter, summary  # 路径与通用件唯一定义处：pkb/core/paths.py
 
 _rep = Reporter()
 

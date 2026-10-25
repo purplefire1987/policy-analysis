@@ -29,7 +29,7 @@
 * 任何脚本只要**声明**了 `--fix`（源码含 `'--fix' in sys.argv` 或 `add_argument('--fix'`），
   就自动纳入 `fix` 动作。注释里提到 --fix 不算声明——2026-10-24 前判据太松，
   check_docs.py 因注释里有这字样被误编进修复队列。
-* 路径只在 `lib.py` 定义一次，各脚本 `from lib import`——不各写一遍。
+* 路径只在 `lib.py` 定义一次，各脚本 `from pkb.core import`——不各写一遍。
 * `status` / `plan` 是给人看的，永远不阻断（恒 exit 0），不要用它们的退出码判成败。
 * 规则只有一处：库内 `AGENTS.md`。本文件不复述规则，只负责调度。
 """
@@ -39,7 +39,7 @@ import pathlib
 import re
 
 HERE = pathlib.Path(__file__).resolve().parent
-from lib import SUMMARY_MARK          # 摘要行契约唯一定义处：lib.py
+from pkb.core import SUMMARY_MARK          # 摘要行契约唯一定义处：pkb/core/report.py
 PY = sys.executable or 'python3'
 
 USAGE = __doc__

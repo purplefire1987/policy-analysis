@@ -24,10 +24,10 @@ import re
 import json
 import datetime
 
-from lib import (CARD_DIR, SIGNAL_DIR, COLLECT_LOG, LEDGER, STATUS,
+from pkb.core import (CARD_DIR, SIGNAL_DIR, COLLECT_LOG, LEDGER, STATUS,
                  read as lib_read, md_section_lines, table_rows, parse_date,
                  span, iso_week)
-# 路径与通用件唯一定义处：lib.py
+# 路径与通用件唯一定义处：pkb/core/paths.py
 # 命名注意：lib 里 LEDGER=任务台账、COLLECT_LOG=采集日志；本文件沿用旧名 LEDGER=采集日志
 TASKS = LEDGER                 # 任务台账.md
 LEDGER = COLLECT_LOG           # 采集日志.md（保留旧变量名，避免全文改名）

@@ -17,7 +17,7 @@ import argparse
 import datetime
 import difflib
 
-from lib import CARD_DIR, WEEKLY_DIR, summary   # 路径唯一定义处：lib.py
+from pkb.core import CARD_DIR, WEEKLY_DIR, summary   # 路径唯一定义处：pkb/core/paths.py
 
 # 产业卡 → 四大领域（仅用于建议填入的「领域」列，不参与判定）
 FIELD_MAP = {

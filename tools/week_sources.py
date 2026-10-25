@@ -27,7 +27,7 @@ import json
 import re
 import sys
 
-from lib import CARD_DIR, SIGNAL_DIR, WEEKLY_DIR, summary
+from pkb.core import CARD_DIR, SIGNAL_DIR, WEEKLY_DIR, summary
 
 H3 = re.compile(r'^### (\d{4}-\d{2}-\d{2}) · (.+?)\s*$')
 

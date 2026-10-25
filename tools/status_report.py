@@ -13,7 +13,7 @@
 import re
 import sys
 
-from lib import COLLECT_LOG, STATUS, LEDGER
+from pkb.core import COLLECT_LOG, STATUS, LEDGER
 
 
 def main():
