@@ -5,7 +5,7 @@
 为什么需要它：
     规则只写一处（AGENTS.md），但执行副本散在库外——README、专家包定义、三个自动化
     提示词。库内脚本查不到它们，改一处漏一处也不会报错。历史上因此出过：专家定义
-    七节名称写错、README 写了已废弃的目录路径、体检提示词漏跑新脚本。
+    节名写错、README 写了已废弃的目录路径、体检提示词漏跑新脚本。
     本检查把「会撒谎的文档」当成待检对象，每 2 天体检时跑一次。
 
 判据来源（单一）：
@@ -89,21 +89,26 @@ def check_interval(docs):
         ok(f'节拍一致：每 {n} 天（AGENTS／两份 README／专家定义／运行状态）')
 
 
-def check_seven_sections(docs):
+def check_week_sections(docs):
+    """周观点节名：模板的 `##` 标题须逐字出现在 AGENTS 与专家定义里。
+
+    节数**不在代码里写死**——模板即清单，加一节只同步两份文档，不必回来改数字
+    （2026-10-26 增「八、本周可证伪判断」正是这个用法）。下界 7 只防模板被误删节。
+    """
     tpl = read(TEMPLATE, '')
-    heads = re.findall(r'^##\s+(.+)$', tpl, re.M)
-    if len(heads) != 7:
-        err('周观点模板', f'节数 {len(heads)}，应为 7')
+    heads = [h.strip() for h in re.findall(r'^##\s+(.+)$', tpl, re.M)]
+    if len(heads) < 7:
+        err('周观点模板', f'节数 {len(heads)}，少于 7（疑有节被误删）')
         return
     for name in ('AGENTS', '专家定义'):
         t = docs.get(name, '')
         if not t:
             continue
-        missing = [h.strip() for h in heads if h.strip() not in t]
+        missing = [h for h in heads if h not in t]
         if missing:
-            err(name, f'周观点七节名称与模板不一致，缺：{"、".join(missing)}')
+            err(name, f'周观点节名与模板不一致，缺：{"、".join(missing)}')
     if not any(e[0] in ('AGENTS', '专家定义') for e in errors):
-        ok('周观点七节名称：AGENTS／专家定义 与模板一致')
+        ok(f'周观点节名：AGENTS／专家定义 与模板一致（{len(heads)} 节）')
 
 
 ANALYSIS_TEMPLATE = TEMPLATE_DIR / '政策分析报告模板.md'
@@ -599,7 +604,7 @@ def run(argv=None):
 
     docs = _load_docs()
     check_interval(docs)
-    check_seven_sections(docs)
+    check_week_sections(docs)
     check_analysis_sections(docs)
     check_blacklist(docs)
     check_domain_literals()

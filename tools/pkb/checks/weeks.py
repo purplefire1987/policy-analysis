@@ -15,7 +15,7 @@ import difflib
 import re
 
 from pkb.core import CARD_DIR, WEEKLY_DIR, Result, Verdict
-from pkb.domain import FIELD_MAP, LEGACY_WEEKS, STAT_DOMAINS
+from pkb.domain import FIELD_MAP, JUDGE_SINCE, LEGACY_WEEKS, STAT_DOMAINS
 
 
 STOPWORDS = ['关于', '的通知', '通知', '的意见', '意见', '实施方案', '方案', '公告',
@@ -299,6 +299,20 @@ def run_all():
     return Result(worst, summary, lines)
 
 
+def _missing_head(text, week):
+    """返回缺的必备节标题；都不缺返回 None。
+
+    第二节按全名判；第八节只判编号 `## 八、`——标题措辞可能微调，
+    编号变了才真是结构变了。生效周用 JUDGE_SINCE 固定，不做滑动窗口
+    （滑动窗口会让新建的周随时间自动豁免）。
+    """
+    if '## 二、本周政策信号' not in text:
+        return '二、本周政策信号'
+    if week >= JUDGE_SINCE and '## 八、' not in text:
+        return '八、本周可证伪判断'
+    return None
+
+
 def run(argv=None):
     ap = argparse.ArgumentParser(description='周观点政策覆盖度校验')
     ap.add_argument('week_pos', nargs='?', metavar='week', help='如 2026-W42')
@@ -316,11 +330,13 @@ def run(argv=None):
 
     legacy = args.week in LEGACY_WEEKS
     f = WEEKLY_DIR / f'周观点-{args.week}.md'
-    if f.exists() and not legacy and '## 二、本周政策信号' not in f.read_text(encoding='utf-8'):
-        return Result(Verdict.FAIL,
-                      f'{args.week} 结构缺节：无「二、本周政策信号」  ❌',
-                      ['✗ 缺「二、本周政策信号」节：七节模板要求该节必在，',
-                       f'  只有 LEGACY_WEEKS 名单内的归档周可豁免，{args.week} 不在名单里。'])
+    if f.exists() and not legacy:
+        lack = _missing_head(f.read_text(encoding='utf-8'), args.week)
+        if lack:
+            return Result(Verdict.FAIL,
+                          f'{args.week} 结构缺节：无「{lack}」  ❌',
+                          [f'✗ 缺「{lack}」节：模板要求该节必在（第八节自 {JUDGE_SINCE} 起），',
+                           f'  只有 LEGACY_WEEKS 名单内的归档周可豁免，{args.week} 不在名单里。'])
 
     try:
         verdict, res, lines = check_week(args.week)

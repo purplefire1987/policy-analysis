@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from pkb.domain import (BLACK, BAD_SUBJECT, is_bad, DOMAINS, STAT_DOMAINS,  # noqa: E402
                         IMPACTS, STATUSES, REQUIRED_FIELDS, FIELD_MAP, LEGACY_WEEKS,
-                        ANALYSIS_TYPES, ANALYSIS_SPINE, ANALYSIS_WORD_LIMIT)
+                        JUDGE_SINCE, ANALYSIS_TYPES, ANALYSIS_SPINE, ANALYSIS_WORD_LIMIT)
 
 
 class TestBlacklist(unittest.TestCase):
@@ -45,6 +45,32 @@ class TestLegacy(unittest.TestCase):
     def test_新周不得进名单(self):
         for wk in ('2026-W42', '2026-W43', '2026-W52'):
             self.assertNotIn(wk, LEGACY_WEEKS)
+
+
+class TestJudgeSection(unittest.TestCase):
+    """第八节「可证伪判断」的生效周。
+
+    判据必须是**固定时点**：若改用「最近 N 周」的滑动窗口，新建的周会随时间
+    自动豁免，和 health 里「0 也写 0」踩的是同一个坑（2026-10-25）。
+    """
+    OLD = '## 二、本周政策信号\n## 七、下周关注\n'
+
+    def test_旧篇不追溯第八节(self):
+        from pkb.checks.weeks import _missing_head
+        self.assertIsNone(_missing_head(self.OLD, '2026-W42'))
+
+    def test_生效周起缺第八节(self):
+        from pkb.checks.weeks import _missing_head
+        self.assertEqual(_missing_head(self.OLD, JUDGE_SINCE), '八、本周可证伪判断')
+
+    def test_有第八节即通过(self):
+        from pkb.checks.weeks import _missing_head
+        text = '## 二、本周政策信号\n## 八、本周可证伪判断\n'
+        self.assertIsNone(_missing_head(text, '2026-W50'))
+
+    def test_缺第二节优先报(self):
+        from pkb.checks.weeks import _missing_head
+        self.assertEqual(_missing_head('## 八、x', '2026-W50'), '二、本周政策信号')
 
 
 class TestFields(unittest.TestCase):
