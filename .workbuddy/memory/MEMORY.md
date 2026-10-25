@@ -6,7 +6,8 @@
 
 - **库**：`/Users/Mr_Zhou/Documents/知识库/资料库`（Obsidian vault），`raw/` 只读。
 - **工具**：`/Users/Mr_Zhou/WorkBuddy/2026-09-23-07-58-53/tools/`，统一入口 `run.py`（74 行，只解析参数→路由→聚合退出码）；实现在 `tools/pkb/` 包里。
-- **git（10-25 建立）**：只在工作区 init，**资料库未纳入版本控制**。远程 GitHub 私有库**尚未连**（`gh` 未装、无 SSH 公钥、无 credential helper），等用户给 URL → `git remote add origin … && git push -u origin main`。`归档/` 在 `.gitignore` 里（含 .obsidian 插件二进制）。
+- **git（10-25 建立）**：只在工作区 init，**资料库未纳入版本控制**。`归档/` 在 `.gitignore` 里（含 .obsidian 插件二进制）。
+- **远程（10-25 进展）**：GitHub 账号 `purplefire1987`（仅一个公有库 hello-world），私有库**尚未建**。SSH 公钥 `~/.ssh/id_ed25519` 已生成（无口令）并钉住 github.com 主机键，**待用户贴到 GitHub**。GitHub connector（MCP）已连、能读账号与搜索，但**建库被拒：403 Resource not accessible by integration**——它能对已授权仓库读写内容，不能创建仓库，所以「建空库」这一步必须人去网页做。MCP `push_files` 只能落成**单个提交**，9 个本地提交的历史要靠 `git push`（SSH）才有。
 - **工作区（10-25 整理后）**：顶层只剩 `tools/`、`automation-prompts/`、`.workbuddy/`、`归档/`。`归档/备份/` 放 8 个 `政策库备份-*`；`归档/旧版/` 放 3 个 `政策库归档-*`（旧版方案与模板／已合并页面／log长条目）；`归档/散件/` 放 log 备份、周观点 W42 补节前快照与样例、空的来源清理报告。**归档只读，不要再往里写。**
 - **专家包部署副本**：`~/.workbuddy/plugins/.../gov-policy-analyst/skills/policy-kb-tools/scripts/` 是 `tools/**/*.py`（含 pkb 递归）的部署副本，由 `run.py export` 生成并写 `MANIFEST.json`（键＝相对 `tools/` 的 posix 路径＋sha256；副本里的残留文件也会被清）；`check_docs` 每次体检比对，漂移／残留即 exit 1。**源永远是 `tools/`**，不许在专家包内改了再同步回来。
 - **已归档勿引用勿重建**：`政策跟踪运营方案`、`政策链总览`、`主题词表`。
