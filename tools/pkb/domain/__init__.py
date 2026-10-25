@@ -15,6 +15,8 @@ from .fields import (                                   # noqa: F401
 )
 from .chains import FIELD_MAP                           # noqa: F401
 from .legacy import LEGACY_WEEKS, JUDGE_SINCE, IMPACT_SINCE   # noqa: F401
+from . import sources                                   # noqa: F401
+from .sources import LEVELS                             # noqa: F401
 
 __all__ = [
     'BLACK', 'BAD_SUBJECT', 'DOC_MUST_MENTION', 'is_bad',
@@ -23,4 +25,5 @@ __all__ = [
     'ANALYSIS_TYPES', 'ANALYSIS_WORD_LIMIT', 'ANALYSIS_SPINE',
     'FIELD_MAP',
     'LEGACY_WEEKS', 'JUDGE_SINCE', 'IMPACT_SINCE',
+    'sources', 'LEVELS',
 ]

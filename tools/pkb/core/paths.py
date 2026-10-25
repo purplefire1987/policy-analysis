@@ -30,6 +30,12 @@ ANALYSIS_DIR = VAULT / 'wiki' / '分析'
 OVERVIEW_DIR = VAULT / 'wiki' / '总览'
 TEMPLATE_DIR = VAULT / 'templates'
 
+# 一手存档区：只增不改（`run.py fetch` 唯一写入点，勘误另存新文件）
+RAW_DIR = VAULT / 'raw'
+ARTICLE_DIR = RAW_DIR / 'articles'
+# 抓取过程的临时落点：原页与附件缓存，供抽取失败时人工复核；不是库内容
+CACHE_DIR = WORKSPACE / '.cache' / 'fetch'
+
 INDEX = VAULT / 'index.md'                      # 唯一入口：链名单＋受控词＋快照
 AGENTS = VAULT / 'AGENTS.md'                    # 唯一规则来源
 README = VAULT / 'README.md'
