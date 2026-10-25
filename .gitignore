@@ -1,0 +1,13 @@
+# 系统
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+
+# 归档：本身就是备份，且含 .obsidian 插件二进制（3.2M），进版本库无意义
+归档/
+
+# 临时
+*.tmp
+*.bak
