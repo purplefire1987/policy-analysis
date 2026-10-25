@@ -9,9 +9,13 @@
 的副本，加一个动作忘了改，清单就会安静地少一行（2026-10-25 `export` 改名 `link`
 正是这类改动）。文件名即动作名，下划线开头是内部件——这条约定由 `test_smoke`
 钉住，所以「发现」出来的清单不会比 ACTIONS 多也不会少。
+
+发现逻辑 2026-10-26 下沉到 `pkb.core.fs.action_names()`：`checks/prompts.py` 也要
+用它验「提示词写的动作是否真实存在」，而 checks 不许反向 import 本层。
 """
 import importlib
-import pkgutil
+
+from pkb.core import action_names
 
 
 def head(title):
@@ -26,17 +30,10 @@ def first_line(mod):
     return doc.split('\n')[0].strip() if doc else '（无说明）'
 
 
-def action_modules():
-    """`pkb/actions/` 里的动作模块名：下划线开头的是内部件（`_proc`、`_snapshot`）。"""
-    from pkb import actions
-    return sorted(m.name for m in pkgutil.iter_modules(actions.__path__)
-                  if not m.name.startswith('_'))
-
-
 def run(argv=None):
     from pkb.checks import REGISTRY
 
-    names = action_modules()
+    names = action_names()
     head('工具目录清单')
     print('\n入口')
     print(f'  run.py                    统一入口（{len(names)} 个动作，跑 `run.py --help` 看全部）')

@@ -7,7 +7,7 @@
 import hashlib
 from pathlib import Path
 
-from .paths import VAULT, SKIP_DIRS
+from .paths import VAULT, TOOLS, SKIP_DIRS
 
 
 def md_files(skip_log=True, roots=None):
@@ -75,3 +75,17 @@ def py_files(root, subdir='pkb'):
     if pkg.exists():
         out += [p for p in sorted(pkg.rglob('*.py')) if '__pycache__' not in p.parts]
     return out
+
+
+def action_names():
+    """`pkb/actions/` 的动作名：**文件名即动作名**，下划线开头是内部件。
+
+    为什么在共用层：两个调用方都要它——`actions/list.py` 用来列清单（不手写名单），
+    `checks/prompts.py` 用来验「提示词里写的 `run.py <动作>` 是否真的存在」。
+    各写一份 glob 就是又一份副本；而 checks 不许反向 import actions，所以只能下沉。
+    走文件系统而不 import 包，是为了让 core 不依赖上层。
+    """
+    d = TOOLS / 'pkb' / 'actions'
+    if not d.exists():
+        return []
+    return sorted(p.stem for p in d.glob('*.py') if not p.stem.startswith('_'))

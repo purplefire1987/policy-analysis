@@ -13,10 +13,11 @@ from .paths import (                                  # noqa: F401
     OVERVIEW_DIR, TEMPLATE_DIR, RAW_DIR, ARTICLE_DIR, CACHE_DIR,
     INDEX, AGENTS, README, LOG,
     STATUS, LEDGER, JUDGE_LEDGER, COLLECT_LOG, CHECK_REPORT, WEEK_TEMPLATE,
+    PROMPT_DIR, PROMPT_ARCHIVE,
     EXPERT_DIR, EXPERT_MD, EXPERT_SKILL, EXPERT_SCRIPTS, SKIP_DIRS,
 )
 from .fs import (                                     # noqa: F401
-    md_files, read, write, digest, all_names, py_files,
+    md_files, read, write, digest, all_names, py_files, action_names,
 )
 from . import expert                                  # noqa: F401
 from . import web, doc                                # noqa: F401
@@ -39,13 +40,14 @@ __all__ = [
     'OVERVIEW_DIR', 'TEMPLATE_DIR', 'RAW_DIR', 'ARTICLE_DIR', 'CACHE_DIR',
     'INDEX', 'AGENTS', 'README', 'LOG',
     'STATUS', 'LEDGER', 'JUDGE_LEDGER', 'COLLECT_LOG', 'CHECK_REPORT', 'WEEK_TEMPLATE',
+    'PROMPT_DIR', 'PROMPT_ARCHIVE',
     'EXPERT_DIR', 'EXPERT_MD', 'EXPERT_SKILL', 'EXPERT_SCRIPTS', 'SKIP_DIRS',
     # 专家包入口形态判定（链接／副本／链错／缺失）
     'expert',
     # 抓页与附件转文本（无口径，只有机制）
     'web', 'doc',
     # 读写
-    'md_files', 'read', 'write', 'digest', 'all_names', 'py_files',
+    'md_files', 'read', 'write', 'digest', 'all_names', 'py_files', 'action_names',
     # frontmatter
     'FM_RE', 'parse_fm', 'set_fm_field',
     # markdown 与日期
