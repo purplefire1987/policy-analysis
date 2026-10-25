@@ -14,12 +14,12 @@ from .fields import (                                   # noqa: F401
     ANALYSIS_TYPES, ANALYSIS_WORD_LIMIT, ANALYSIS_SPINE,
 )
 from .chains import FIELD_MAP                           # noqa: F401
-from .legacy import LEGACY_WEEKS, JUDGE_SINCE           # noqa: F401
+from .legacy import LEGACY_WEEKS, JUDGE_SINCE, IMPACT_SINCE   # noqa: F401
 
 __all__ = [
     'BLACK', 'BAD_SUBJECT', 'DOC_MUST_MENTION', 'is_bad',
     'DOMAINS', 'STAT_DOMAINS', 'IMPACTS', 'STATUSES', 'REQUIRED_FIELDS', 'CARD_SIZE_WARN',
     'ANALYSIS_TYPES', 'ANALYSIS_WORD_LIMIT', 'ANALYSIS_SPINE',
     'FIELD_MAP',
-    'LEGACY_WEEKS', 'JUDGE_SINCE',
+    'LEGACY_WEEKS', 'JUDGE_SINCE', 'IMPACT_SINCE',
 ]

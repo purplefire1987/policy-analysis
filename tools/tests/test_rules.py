@@ -15,7 +15,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from pkb.domain import (BLACK, BAD_SUBJECT, is_bad, DOMAINS, STAT_DOMAINS,  # noqa: E402
                         IMPACTS, STATUSES, REQUIRED_FIELDS, FIELD_MAP, LEGACY_WEEKS,
-                        JUDGE_SINCE, ANALYSIS_TYPES, ANALYSIS_SPINE, ANALYSIS_WORD_LIMIT)
+                        JUDGE_SINCE, IMPACT_SINCE, ANALYSIS_TYPES, ANALYSIS_SPINE,
+                        ANALYSIS_WORD_LIMIT)
 
 
 class TestBlacklist(unittest.TestCase):
@@ -45,6 +46,11 @@ class TestLegacy(unittest.TestCase):
     def test_新周不得进名单(self):
         for wk in ('2026-W42', '2026-W43', '2026-W52'):
             self.assertNotIn(wk, LEGACY_WEEKS)
+
+    def test_影响列生效周与第八节同期(self):
+        # 两处都是固定时点，不是滑动窗口；同期生效的理由：影响档位要挂第八节编号
+        self.assertEqual(IMPACT_SINCE, '2026-W43')
+        self.assertEqual(IMPACT_SINCE, JUDGE_SINCE)
 
 
 class TestJudgeSection(unittest.TestCase):

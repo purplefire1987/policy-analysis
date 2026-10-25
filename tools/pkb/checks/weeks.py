@@ -2,12 +2,14 @@
 # -*- coding: utf-8 -*-
 """周观点政策覆盖度校验。
 
-用途：把「本周政策是否全部进了周观点速览表」从人工目测变成脚本对账。
+用途：把「本周政策是否全部进了周观点速览表」从人工目测变成脚本对账；
+另查「影响」列是否只填三档（`IMPACT_SINCE` 起）。
 三种跑法：指定周号（`--week` 或位置参数，由 run.py 透传）、`--all` 全量、`--add-missing`
 只打印可粘贴的行。
 
 退出语义：PASS = 通过（含 LEGACY_WEEKS 归档周，差异不计）；
-          FAIL = 有漏项／数字不一致／文件不存在／缺信号节；BAD_INPUT = 没给周号也没给 --all。
+          FAIL = 有漏项／数字不一致／影响列不合规／文件不存在／缺信号节；
+          BAD_INPUT = 没给周号也没给 --all。
 """
 import argparse
 import datetime
@@ -15,12 +17,17 @@ import difflib
 import re
 
 from pkb.core import CARD_DIR, WEEKLY_DIR, Result, Verdict
-from pkb.domain import FIELD_MAP, JUDGE_SINCE, LEGACY_WEEKS, STAT_DOMAINS
+from pkb.domain import (FIELD_MAP, IMPACT_SINCE, IMPACTS, JUDGE_SINCE,
+                        LEGACY_WEEKS, STAT_DOMAINS)
 
 
 STOPWORDS = ['关于', '的通知', '通知', '的意见', '意见', '实施方案', '方案', '公告',
              '决定', '办法', '规定', '若干', '进一步', '加强', '推动', '促进', '做好',
              '有关', '工作', '实施', '开展', '印发', '发布', '年度', '我国', '国家']
+
+# 判断编号形态（第八节第一列，与速览表「影响」列括号内的引用同一写法）。
+# 这是格式而不是口径：口径（哪周起生效）在 domain.legacy。
+JUDGE_ID = r'J\d{4}-W\d{2}-\d+'
 
 
 def norm(s):
@@ -108,7 +115,8 @@ def parse_weekly_table(path):
         if cells[1].startswith('（') and (body in ('—', '-', '–', '') or body.startswith('—')):
             placeholders.append({'line': i + 1, '政策': cells[1]})
             continue
-        rows.append({'line': i + 1, '领域': cells[0], '政策': cells[1]})
+        rows.append({'line': i + 1, '领域': cells[0], '政策': cells[1],
+                     '影响': cells[4] if len(cells) > 4 else None})
     return rows, txt, lines, placeholders
 
 
@@ -159,10 +167,44 @@ def _reconcile(txt, rows):
     return declared, fm_count, dist, dist_sum
 
 
+def _judge_ids(txt):
+    """第八节表内出现过的判断编号集合（只认表格第一列）。"""
+    return set(re.findall(rf'^\|\s*({JUDGE_ID})\s*\|', txt, re.M))
+
+
+def impact_issues(rows, txt, week):
+    """速览表「影响」列：只许三档，可附一个判断编号，编号须真在第八节。
+
+    为什么加（2026-10-26）：此前这一列没有校验，W42 出现过「中高」
+    「中性偏正」「中（战略级）」——档位一旦自由发挥，「影响」就退回成形容词，
+    与第八节的对应关系也断了。生效周固定为 IMPACT_SINCE，不做滑动窗口：
+    滑动窗口会让旧篇随时间自动合格。
+    """
+    if week < IMPACT_SINCE:
+        return []
+    ok_values = '|'.join(sorted(IMPACTS))
+    pat = re.compile(rf'^({ok_values})(?:[（(]({JUDGE_ID})[）)])?$')
+    ids = _judge_ids(txt)
+    issues = []
+    for r in rows:
+        cell = (r.get('影响') or '').replace('*', '').replace(' ', '')
+        m = pat.match(cell)
+        if not cell:
+            issues.append((r['line'], '（空）', '影响列不得留空'))
+        elif not m:
+            issues.append((r['line'], cell,
+                           f'只许 {"／".join(sorted(IMPACTS))}，可附（判断编号）；'
+                           '「中高」「中性偏正」这类复合档位不算'))
+        elif m.group(2) and m.group(2) not in ids:
+            issues.append((r['line'], cell, f'{m.group(2)} 不在第八节表内'))
+    return issues
+
+
 def _ok(ctx):
     """任一类问题存在即不通过。判据只此一处，渲染不再重算。"""
     n = len(ctx['rows'])
-    if ctx['missing'] or ctx['orphans'] or ctx['placeholders'] or ctx['undeclared']:
+    if (ctx['missing'] or ctx['orphans'] or ctx['placeholders']
+            or ctx['undeclared'] or ctx['impacts']):
         return False
     for key in ('declared', 'fm_count', 'dist_sum'):
         if ctx[key] is not None and ctx[key] != n:
@@ -206,6 +248,18 @@ def _render_problems(ctx):
     return out
 
 
+def _render_impacts(ctx):
+    """影响列：三档是否守住、引用编号是否真存在。"""
+    issues = ctx['impacts']
+    if not issues:
+        return ['✅ 影响列合规（三档或三档＋判断编号）', '']
+    out = [f'❌ 影响列 {len(issues)} 行不合规：']
+    for line, cell, why in issues:
+        out.append(f'   第 {line} 行「{cell}」→ {why}')
+    out.append('')
+    return out
+
+
 def _render_numbers(ctx):
     """数字对账三行：正文声明数、frontmatter 政策数、分领域合计。"""
     n = len(ctx['rows'])
@@ -239,12 +293,13 @@ def check_week(week_str, verbose=True):
 
     matched, used, orphan, merged, undeclared = _match(in_window, rows)
     declared, fm_count, dist, dist_sum = _reconcile(txt, rows)
+    impacts = impact_issues(rows, txt, week_str)
     missing = [(d, t, c) for d, t, c in in_window if (d, t) not in matched]
 
     ctx = {'in_window': in_window, 'rows': rows, 'matched': matched, 'merged': merged,
            'missing': missing, 'orphans': orphan, 'placeholders': placeholders,
            'undeclared': undeclared, 'declared': declared, 'fm_count': fm_count,
-           'dist': dist, 'dist_sum': dist_sum}
+           'dist': dist, 'dist_sum': dist_sum, 'impacts': impacts}
     ctx['ok'] = _ok(ctx)
 
     out = []
@@ -256,6 +311,7 @@ def check_week(week_str, verbose=True):
                f'成功匹配：{len(matched)} 项（占用表内 {len(used)} 行）',
                '']
         out += _render_problems(ctx)
+        out += _render_impacts(ctx)
         out += _render_numbers(ctx)
         out.append('✅ 校验通过' if ctx['ok'] else '❌ 校验未通过，请修正后重跑')
 
@@ -263,7 +319,7 @@ def check_week(week_str, verbose=True):
         'week': week_str, 'in_window': in_window, 'rows': rows,
         'missing': missing, 'orphans': orphan, 'placeholders': placeholders,
         'merged': merged, 'undeclared_merge': undeclared,
-        'declared': declared, 'dist_sum': dist_sum,
+        'declared': declared, 'dist_sum': dist_sum, 'impacts': impacts,
     }, out
 
 
@@ -359,6 +415,8 @@ def run(argv=None):
         return Result(Verdict.PASS,
                       f'{args.week} 历史归档（规则变更前六节旧篇）：覆盖率 {rate:.1f}%'
                       f'（漏 {n_miss}，错位 {n_orph}），差异不计入退出码', lines)
+    n_imp = len(res.get('impacts') or [])
+    more = f'；影响列 {n_imp} 处不合规' if n_imp else ''
     return Result(verdict,
-                  f'{args.week} 覆盖率 {rate:.1f}%（漏 {n_miss}，错位 {n_orph}）'
+                  f'{args.week} 覆盖率 {rate:.1f}%（漏 {n_miss}，错位 {n_orph}）' + more
                   + ('  ✅' if verdict is Verdict.PASS else '  ❌'), lines)
