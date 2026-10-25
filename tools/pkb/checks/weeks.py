@@ -120,13 +120,19 @@ def _match(in_window, rows):
     """
     matched, used, row_claims = {}, set(), {}
     for d, t, c in in_window:
-        best, best_s, best_i = None, 0.0, None
+        # 同分时按「归一化后是否逐字相同」再按行序裁决。
+        # 为什么需要：一批同日发出的公告共享同一句套话（「优化调整××相关物项
+        # 出口管制措施」），核心词加成会把它们都抬到 1.0；只看 s 大小的话，
+        # 谁先出现在表里谁通吃，另一行就被判成「错位」、这一行被判成「合并」。
+        # 2026-10-26 试运行 W43 就是这样误报的（49 号与 51 号同批）。
+        best, best_score, best_i = None, (0.0, 0), None
         for idx, r in enumerate(rows):
-            s = similarity(t, r['政策'])
-            if s > best_s:
-                best, best_s, best_i = r, s, idx
-        if best_s >= 0.42:
-            matched[(d, t)] = (best, best_s)
+            score = (round(similarity(t, r['政策']), 6),
+                     1 if norm(t) == norm(r['政策']) else 0)
+            if score > best_score:
+                best, best_score, best_i = r, score, idx
+        if best_score[0] >= 0.42:
+            matched[(d, t)] = (best, best_score[0])
             used.add(best_i)
             row_claims.setdefault(best_i, []).append((d, t))
     orphan = [r for idx, r in enumerate(rows) if idx not in used]
