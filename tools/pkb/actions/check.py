@@ -11,10 +11,11 @@
 """
 import re
 
-from pkb.core import TOOLS, Result, Verdict
+from pkb.core import Result, Verdict
 from pkb.checks import REGISTRY
 
-from ._proc import PY, sh
+from . import snapshot
+from ._proc import capture
 
 SUMMARY_MARK = '▸摘要:'          # 与 core.report 同一契约，这里只用于回显明细尾部
 
@@ -76,10 +77,9 @@ def run(rest=None):
             return 2
         full = True                       # 单跑一项时，默认看全量输出
 
-    # [0] 快照比对：必须在结构检查之前
-    snap = TOOLS / 'refresh_snapshot.py'
-    if snap.exists() and only is None:
-        code, out = sh([PY, str(snap), '--dry-run'], cwd=str(TOOLS))
+    # [0] 快照比对：必须在结构检查之前，否则结构检查拿旧统计报假警
+    if only is None:
+        code, out = capture(snapshot.run, ['--dry-run'])
         n = re.findall(r'(\d+)\s*处(?:更新|差异)', out)
         cnt = int(n[-1]) if n else 0
         print(f'[0] refresh_snapshot --dry-run        退出码 {code}'

@@ -25,7 +25,6 @@ import argparse
 import datetime
 import json
 import re
-import sys
 
 from pkb.core import CARD_DIR, SIGNAL_DIR, WEEKLY_DIR, summary
 
@@ -73,14 +72,14 @@ def body_of(dirpath, sec, limit=None):
     return chunk
 
 
-def main():
+def run(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument('week_pos', nargs='?', metavar='week', help='如 2026-W42')
     ap.add_argument('--week', dest='week', help='同上')
     ap.add_argument('--full', action='store_true', help='连小节正文一起打印')
     ap.add_argument('--json', action='store_true', help='JSON 输出')
     ap.add_argument('--limit', type=int, default=1200, help='--full 时每段最多字符（默认 1200）')
-    args = ap.parse_args()
+    args = ap.parse_args(list(argv or []))
     week = args.week or args.week_pos
     if not week:
         ap.print_help()
@@ -138,6 +137,3 @@ def main():
               '一整张卡可能有 3 万字符，一个 30 行小节只有 1 千。）')
     return 0
 
-
-if __name__ == '__main__':
-    sys.exit(main())

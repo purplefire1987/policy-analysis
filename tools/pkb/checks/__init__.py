@@ -27,6 +27,7 @@ class Spec:
     module: ModuleType
     needs_all: bool = False        # 不带参数就没结论，需要自动补 --all
     flags: tuple = ()              # 认领的参数（其余不传给它，传了 argparse 会报未知参数）
+    fixable: bool = False          # 提供 run_fix()：能被 `run.py fix` 自动修
 
 
 # 顺序 = 输出编号顺序。按名称字母序排列，与模块化之前 glob 的结果一致。
@@ -34,7 +35,7 @@ REGISTRY = (
     Spec('check_analysis.py', analysis),
     Spec('check_docs.py', docs),
     Spec('check_signals.py', signals, flags=('--since', '--week')),
-    Spec('check_structure.py', structure),
+    Spec('check_structure.py', structure, fixable=True),
     Spec('check_views.py', views),
     Spec('check_week_coverage.py', weeks, needs_all=True, flags=('--week', '--all')),
 )

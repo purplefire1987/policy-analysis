@@ -27,7 +27,6 @@ import argparse
 import datetime
 import json
 import shutil
-import sys
 
 from pkb.core import EXPERT_DIR, TOOLS, digest, py_files, read
 
@@ -144,12 +143,9 @@ def do_check():
     return 1
 
 
-def main():
+def run(argv=None):
     ap = argparse.ArgumentParser(description='导出脚本树到专家包并写哈希清单')
     ap.add_argument('--check', action='store_true', help='只比对不写盘，不一致 exit 1')
-    args = ap.parse_args()
+    args = ap.parse_args(list(argv or []))
     return do_check() if args.check else do_export()
 
-
-if __name__ == '__main__':
-    sys.exit(main())

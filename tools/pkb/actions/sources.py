@@ -144,11 +144,11 @@ def downgrade_sections(text, before, rel, log):
     return '\n'.join(out)
 
 
-def main():
+def run(argv=None):
     ap = argparse.ArgumentParser(description='来源违规清理')
     ap.add_argument('--apply', action='store_true', help='实际写盘（默认只演练）')
     ap.add_argument('--dry-run', action='store_true', help='只报告不写盘（默认行为，保留以兼容旧调用）')
-    args = ap.parse_args()
+    args = ap.parse_args(list(argv or []))
     dry = not args.apply
     log = []
     files = sorted(p for p in (VAULT / 'wiki').rglob('*.md'))
@@ -190,6 +190,3 @@ def main():
                    encoding='utf-8')
     print(f'\n报告：{rep}')
 
-
-if __name__ == '__main__':
-    main()

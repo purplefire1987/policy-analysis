@@ -11,12 +11,11 @@
 """
 
 import re
-import sys
 
 from pkb.core import COLLECT_LOG, STATUS, LEDGER
 
 
-def main():
+def run(argv=None):
     print('\n' + '=' * 62)
     print('当前状态')
     print('=' * 62)
@@ -66,6 +65,3 @@ def main():
     print('  然后  python3 tools/run.py plan    （领本轮的活）')
     return 0
 
-
-if __name__ == '__main__':
-    sys.exit(main())

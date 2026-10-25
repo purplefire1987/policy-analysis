@@ -21,7 +21,6 @@
 
 import argparse
 import re
-import sys
 from collections import defaultdict
 from datetime import date
 
@@ -96,10 +95,10 @@ def refresh(n_cards, cards, policies, today, dry):
     return changes
 
 
-def main():
+def run(argv=None):
     ap = argparse.ArgumentParser(description='刷新 index.md 统计快照')
     ap.add_argument('--dry-run', action='store_true', help='只看差异，不写')
-    args = ap.parse_args()
+    args = ap.parse_args(list(argv or []))
     dry = args.dry_run
     today = date.today().isoformat()
     n_cards, n_policies, cards, policies = collect()
@@ -113,6 +112,3 @@ def main():
     print(f'\nindex.md：{c} 处更新' + ('（未写入）' if dry else ''))
     return 0
 
-
-if __name__ == '__main__':
-    sys.exit(main())

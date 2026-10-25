@@ -19,7 +19,6 @@
 """
 
 import argparse
-import sys
 import re
 import json
 import datetime
@@ -392,12 +391,12 @@ def pr(p):
     return 0
 
 
-def main():
+def run(argv=None):
     ap = argparse.ArgumentParser(description='派活器：本轮待办清单')
     ap.add_argument('--round', type=int, default=None, help='只影响标题里的轮次号')
     ap.add_argument('--top', type=int, default=8, help='存量观点清单最多列几条')
     ap.add_argument('--json', action='store_true', help='机器可读输出')
-    args = ap.parse_args()
+    args = ap.parse_args(list(argv or []))
 
     if not CARD_DIR.exists():
         print(f'✗ 未找到产业卡目录：{CARD_DIR}')
@@ -420,6 +419,3 @@ def main():
 
     return pr(p)
 
-
-if __name__ == '__main__':
-    sys.exit(main())
