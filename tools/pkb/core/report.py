@@ -103,11 +103,15 @@ class Reporter:
     def has_err_on(self, item):
         return any(e[0] == item for e in self.errors)
 
-    def render(self, quiet=False):
+    def to_lines(self, quiet=False):
+        """渲染成行列表（不打印）——checks 把它塞进 Result.lines，由 action 决定打印。"""
+        out = []
         if not quiet:
-            for m in self.oks:
-                print(f'  OK  {m}')
-        for item, msg in self.errors:
-            print(f'  ✗  [{item}] {msg}')
-        for item, msg in self.warns:
-            print(f'  ·  [{item}] {msg}')
+            out += [f'  OK  {m}' for m in self.oks]
+        out += [f'  ✗  [{i}] {m}' for i, m in self.errors]
+        out += [f'  ·  [{i}] {m}' for i, m in self.warns]
+        return out
+
+    def render(self, quiet=False):
+        for line in self.to_lines(quiet):
+            print(line)

@@ -158,91 +158,12 @@ def action_status():
 
 # ─────────────────────────── 动作：check ───────────────────────────
 def action_check(rest=None):
-    """全量自检。先刷新快照（否则结构检查会拿旧快照报假警），再跑全部 check_*。
+    """全量自检。实现已迁到 pkb/actions/check.py（输出详略与退出码聚合都在那一层）。
 
-    可带参数，参数只交给认得它的脚本：
-      run.py check --since 2026-10-20    （采集收工前核本轮信号）
-      run.py check 2026-W43              （周观点自测某一周）
-      run.py check --only docs           （只跑名字含 docs 的脚本，并打印完整输出）
-      run.py check --full                （全部跑，打印完整输出——诊断用，费 token）
+    可带参数：--since（信号窗口）／--week 或裸周号（周观点）／--only（单项全量输出）／--full
     """
-    rest = list(rest or [])
-    only, full = None, False
-    if '--only' in rest:
-        i = rest.index('--only')
-        only = rest[i + 1] if i + 1 < len(rest) else ''
-        del rest[i:i + 2]
-    if '--full' in rest:
-        full = True
-        rest.remove('--full')
-
-    head('全量自检' if not only else f'自检（只跑匹配 {only} 的脚本）')
-
-    scripts = discover_checks()
-    if only is not None:
-        scripts = [p for p in scripts if only.lower() in p.name.lower()]
-        if not scripts:
-            print(f'没有脚本名匹配「{only}」。可用：'
-                  + '、'.join(p.stem.replace('check_', '') for p in discover_checks()))
-            return 2
-        full = True                       # 单跑一个脚本时，默认看全量输出
-
-    snap = HERE / 'refresh_snapshot.py'
-    if snap.exists() and only is None:
-        code, out = sh([PY, str(snap), '--dry-run'])
-        n = re.findall(r'(\d+)\s*处(?:更新|差异)', out)
-        cnt = int(n[-1]) if n else 0
-        print(f'[0] refresh_snapshot --dry-run        退出码 {code}'
-              + (f'（{cnt} 处待更新，需跑 fix）' if cnt else '（已是最新）'))
-
-    bad, routed = [], set()
-    for i, p in enumerate(scripts, 1):
-        # 需要 --all 的脚本自动补 —— 判据是**真注册**，不是源码里提过
-        args = ['--all'] if declares(p, ALL_DECL) else []
-        extra = route_args(p, rest)
-        for x in extra:
-            if x.startswith('--'):
-                routed.add(x.split('=')[0])
-        if '--week' in extra:
-            routed.add('周号')
-        # 显式传了参数时，以调用方意图为准，不再自动补 --all（否则两个条件互斥）
-        args = extra if extra and '--all' not in extra else args + extra
-        code, out = sh([PY, str(p)] + args)
-        tail = pick_summary(out)
-        print(f'[{i}] {p.name:<28} 退出码 {code}   {tail}')
-        if code != 0:
-            bad.append(p.name)
-        if (code != 0 or full) and out.strip():
-            body = out.strip().split('\n')
-            if not full:
-                body = body[:14]
-            print('\n'.join('      ' + l for l in body))
-
-    # 参数拼错/不被任何脚本认领时必须出声：静默丢弃会让人以为窗口核过了
-    missed = []
-    for a in rest:
-        flag = a.split('=')[0]
-        if flag.startswith('--') and flag not in routed:
-            missed.append(flag)
-        elif re.match(r'\d{4}-W\d{2}$', a) and '周号' not in routed:
-            missed.append(a)
-    if missed:
-        print(f'\n⚠ 参数没有任何检查脚本认领：{"、".join(missed)}')
-        print('   可用：--since YYYY-MM-DD（信号窗口）／--week YYYY-Www 或裸周号（周观点）')
-        print('   本次运行的结论**不含**你要的那个窗口——别拿 exit 0 当它已通过。')
-
-    head('自检结论')
-    if bad:
-        print(f'❌ {len(bad)} 个检查未通过：{", ".join(bad)}')
-        print('   处置：先跑 `python3 tools/run.py fix` 自动修复；')
-        print('   修完仍非 0 的，用 `run.py check --only <名字>` 看完整明细——')
-        print('   那通常是脚本修不了的判断类问题。')
-        return 1
-    if missed:
-        print('检查本身全部通过，但参数没送到（见上面的 ⚠），等于没核你要的范围。')
-        return 2
-    print('✅ 全部检查通过。')
-    return 0
+    from pkb.actions import check as check_action
+    return check_action.run(rest)
 
 
 # ─────────────────────────── 动作：fix ────────────────────────────
