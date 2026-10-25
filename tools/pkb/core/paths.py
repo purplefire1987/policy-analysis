@@ -37,6 +37,7 @@ LOG = VAULT / 'log.md'
 
 STATUS = OVERVIEW_DIR / '运行状态.md'            # 管「跑没跑」
 LEDGER = OVERVIEW_DIR / '任务台账.md'            # 管「修没修」
+JUDGE_LEDGER = OVERVIEW_DIR / '判断台账.md'      # 管「判没判」
 COLLECT_LOG = OVERVIEW_DIR / '采集日志.md'       # 管「采到哪天」
 CHECK_REPORT = OVERVIEW_DIR / '体检报告.md'
 WEEK_TEMPLATE = TEMPLATE_DIR / '周观点模板.md'
