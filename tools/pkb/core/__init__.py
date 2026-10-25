@@ -13,11 +13,12 @@ from .paths import (                                  # noqa: F401
     OVERVIEW_DIR, TEMPLATE_DIR,
     INDEX, AGENTS, README, LOG,
     STATUS, LEDGER, COLLECT_LOG, CHECK_REPORT, WEEK_TEMPLATE,
-    EXPERT_DIR, EXPERT_MD, SKIP_DIRS,
+    EXPERT_DIR, EXPERT_MD, EXPERT_SKILL, EXPERT_SCRIPTS, SKIP_DIRS,
 )
 from .fs import (                                     # noqa: F401
     md_files, read, write, digest, all_names, py_files,
 )
+from . import expert                                  # noqa: F401
 from .fm import (                                     # noqa: F401
     FM_RE, parse_fm, set_fm_field,
 )
@@ -37,7 +38,9 @@ __all__ = [
     'OVERVIEW_DIR', 'TEMPLATE_DIR',
     'INDEX', 'AGENTS', 'README', 'LOG',
     'STATUS', 'LEDGER', 'COLLECT_LOG', 'CHECK_REPORT', 'WEEK_TEMPLATE',
-    'EXPERT_DIR', 'EXPERT_MD', 'SKIP_DIRS',
+    'EXPERT_DIR', 'EXPERT_MD', 'EXPERT_SKILL', 'EXPERT_SCRIPTS', 'SKIP_DIRS',
+    # 专家包入口形态判定（链接／副本／链错／缺失）
+    'expert',
     # 读写
     'md_files', 'read', 'write', 'digest', 'all_names', 'py_files',
     # frontmatter

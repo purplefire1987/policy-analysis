@@ -14,7 +14,7 @@
     python3 tools/run.py fix        一次性修复（所有能自动修的，一次改完）             恒 exit 0
     python3 tools/run.py plan       派活清单（本轮该做什么，按执行顺序）               恒 exit 0
     python3 tools/run.py week 2026-W42  周观点素材预取（索引＋行号，--full 连正文）     恒 exit 0
-    python3 tools/run.py export     把脚本同步进专家包（部署副本＋哈希清单）           恒 exit 0
+    python3 tools/run.py link       把专家包入口接回本体（符号链接，杜绝副本漂移）   有漂移 exit 1
     python3 tools/run.py sources    来源合规扫描（--apply 才写盘）                     有问题 exit 1
     python3 tools/run.py list       列出包内检查项、动作与用途（不用记模块名）
 
@@ -37,7 +37,7 @@
 """
 import sys
 
-from pkb.actions import check, export, fix, plan, sources, status, week
+from pkb.actions import check, fix, link, plan, sources, status, week
 from pkb.actions import list as listing
 
 USAGE = __doc__
@@ -48,7 +48,7 @@ ACTIONS = {
     'fix':     (fix.run,     '一次性修复所有能自动修的'),
     'plan':    (plan.run,    '派活清单'),
     'week':    (week.run,    '周观点素材预取：某周政策与信号索引＋行号'),
-    'export':  (export.run,  '把脚本同步进专家包（部署副本＋哈希清单，--check 只比对）'),
+    'link':    (link.run,    '专家包入口接回本体（符号链接，--check 只核对）'),
     'sources': (sources.run, '来源合规扫描（--apply 写盘）'),
     'list':    (listing.run, '列出包内检查项、动作与用途'),
 }

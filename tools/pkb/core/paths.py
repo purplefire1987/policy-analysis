@@ -44,6 +44,9 @@ WEEK_TEMPLATE = TEMPLATE_DIR / '周观点模板.md'
 # 专家包在库外，但被 check_docs 校验，路径也只在此定义一次
 EXPERT_DIR = Path.home() / '.workbuddy/plugins/marketplaces/my-experts/plugins/gov-policy-analyst'
 EXPERT_MD = EXPERT_DIR / 'agents' / 'gov-policy-analyst.md'
+EXPERT_SKILL = EXPERT_DIR / 'skills' / 'policy-kb-tools'
+# 专家包里的 scripts **不是副本**，是指向 TOOLS 的符号链接（见 pkb/core/expert.py）
+EXPERT_SCRIPTS = EXPERT_SKILL / 'scripts'
 
 # 扫描时要排除的目录
 SKIP_DIRS = ('.obsidian', '.trash', '.git', '__pycache__')

@@ -130,5 +130,35 @@ class TestFunctionSize(unittest.TestCase):
         self.assertEqual(over, [], '超过 %d 行：%s' % (self.LIMIT, '；'.join(over)))
 
 
+class TestActionRegistry(unittest.TestCase):
+    """动作表与目录一一对应：`run.py` 的 ACTIONS ↔ `pkb/actions/*.py`。
+
+    为什么钉住：这张表此前在三个地方各写一遍——run.py、AGENTS 第十节、专家定义，
+    外加 `list.py` 里一个手写元组。加/改一个动作要改四处，漏一处不会报错，只会让
+    某份清单安静地少一行（`export` 改名 `link` 就属于这种改动）。
+    现在只剩两处，且由这条测试对齐；`check_docs.check_actions` 管文档那两份。
+    """
+
+    def test_动作模块与ACTIONS同名同数(self):
+        import importlib
+        import pkgutil
+        from pkb import actions as pkg
+
+        mods = {m.name for m in pkgutil.iter_modules(pkg.__path__)
+                if not m.name.startswith('_')}
+        entry = importlib.import_module('run')
+        self.assertEqual(mods, set(entry.ACTIONS),
+                         '目录里有而 ACTIONS 没有（或反之）——两处必须同步')
+
+    def test_内部件不暴露为动作(self):
+        """下划线开头的内部件不该在 ACTIONS 里（否则用户能直接调半成品）。"""
+        import importlib
+        from pkb import actions as pkg
+
+        entry = importlib.import_module('run')
+        internal = {p.stem for p in Path(pkg.__file__).parent.glob('_*.py')}
+        self.assertEqual(internal & set(entry.ACTIONS), set())
+
+
 if __name__ == '__main__':
     unittest.main()

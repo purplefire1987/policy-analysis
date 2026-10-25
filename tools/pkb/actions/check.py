@@ -14,7 +14,7 @@ import re
 from pkb.core import Result, Verdict
 from pkb.checks import REGISTRY
 
-from . import snapshot
+from . import _snapshot as snapshot
 from ._proc import capture
 
 SUMMARY_MARK = '▸摘要:'          # 与 core.report 同一契约，这里只用于回显明细尾部

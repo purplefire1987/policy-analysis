@@ -17,12 +17,11 @@
 
 import argparse
 import ast
-import json
 import re
 
 from pkb.core import (VAULT, CARD_DIR, CHAIN_DIR, TEMPLATE_DIR, INDEX, AGENTS, README, LOG,
                  STATUS, LEDGER, EXPERT_MD, WEEK_TEMPLATE, OVERVIEW_DIR, TOOLS, EXPERT_DIR,
-                 read, digest, py_files, Reporter, Result, Verdict)
+                 read, py_files, expert, Reporter, Result, Verdict)
 from pkb import domain as _domain
 from pkb.domain import BLACK, DOC_MUST_MENTION  # 黑名单唯一定义处：pkb/domain/blacklist.py
 EXPERT = EXPERT_MD
@@ -412,48 +411,33 @@ def check_ledger_numbers():
 
 
 def check_expert_scripts():
-    """专家包内的脚本副本必须与 `tools/` 同源（按 MANIFEST 的 sha256 逐条比对）。
+    """专家包 `scripts` 必须是指向 `tools/` 的**链接**——副本形态本身就是错误。
 
-    为什么单列：专家包要能独立运行就得自带脚本，自带就有了第二份副本。
-    副本怕的不是漂移，是**漂移了没人知道**——库内脚本查不到库外那份，
-    改了 tools 忘了同步，两边会安静地各说各话（历史 4 次事故全属此类）。
-    判据以 `tools/` 为准；不一致不是「报一下」，是 exit 1：要么同步，要么别分发。
+    为什么不再比哈希：比哈希是在**事后发现**漂移，而那时通常已经按旧代码跑过若干轮
+    （本库 4 次事故全是这个时间差）。链接让「同一份代码存在两处」这个前提消失，
+    于是「漂移」不再是需要被发现的东西——它没有发生的载体。
+    因此这里判的是形态而非内容：是链接且指向 tools 即通过；实体目录一律硬错误，
+    并把与 tools 的差异逐条列出——那些差异往往是有人把修复写在了错误的副本上，
+    该搬回 `tools/`，不该静默丢弃。
     """
-    skill = EXPERT_DIR / 'skills' / 'policy-kb-tools'
-    man = skill / 'MANIFEST.json'
-    if not man.exists():
-        err('专家包', 'skills/policy-kb-tools 缺 MANIFEST.json——副本无从校验（跑 `run.py export`）')
+    st = expert.state()
+    if st == expert.LINK:
+        ok(f'专家包入口是链接 → tools（{len(py_files(TOOLS))} 个脚本同一份，无副本）')
         return
-    try:
-        listed = json.loads(read(man, '{}')).get('files', {})
-    except Exception as e:
-        err('专家包', f'MANIFEST.json 无法解析：{e}')
+    if st == expert.COPY:
+        items = expert.drift()
+        for rel, kind in items[:12]:
+            err('专家包', f'副本[{kind}] {rel}')
+        if len(items) > 12:
+            err('专家包', f'副本另有 {len(items) - 12} 处差异未列出')
+        err('专家包', '专家包 scripts 是实体副本，不是链接——跑 `run.py link --force` 还原；'
+                      '副本里的改动若该保留，先搬回 tools/')
         return
-    # 键是相对 tools/ 的 posix 路径——pkb/ 是包，不能再按文件名平铺比对
-    cur = {p.relative_to(TOOLS).as_posix(): digest(p) for p in py_files(TOOLS)}
-    add = sorted(set(cur) - set(listed))
-    gone = sorted(set(listed) - set(cur))
-    diff = sorted(n for n in set(cur) & set(listed) if cur[n] != listed[n].get('sha256'))
-    # 副本里源已不存在的脚本：留着会让 `import lib` 拿到过期实现，同样算漂移
-    dest_root = skill / 'scripts'
-    stray = []
-    if dest_root.exists():
-        stray = sorted(p.relative_to(dest_root).as_posix()
-                       for p in dest_root.rglob('*.py')
-                       if '__pycache__' not in p.parts
-                       and p.relative_to(dest_root).as_posix() not in cur)
-    if not (add or gone or diff or stray):
-        ok(f'专家包脚本与 tools 同源（{len(cur)} 个，哈希一致）')
+    if st == expert.MISSING:
+        err('专家包', '专家包缺 skills/policy-kb-tools/scripts——跑 `run.py link` 建立链接')
         return
-    for n in add:
-        err('专家包', f'tools 有、包内没有：{n}')
-    for n in gone:
-        err('专家包', f'包内有、tools 已无：{n}')
-    for n in diff:
-        err('专家包', f'内容已变（改了 tools 未同步）：{n}')
-    for n in stray:
-        err('专家包', f'包内残留（tools 已无）：{n}')
-    err('专家包', '副本已漂移——跑 `run.py fix`（或 `run.py export`）自动同步，不要在专家包内直接改')
+    err('专家包', f'专家包 scripts 指向别处：{expert.link_target() or "(悬空)"}'
+                  f'（应为 {TOOLS}）——跑 `run.py link` 归位')
 
 
 def check_sources():

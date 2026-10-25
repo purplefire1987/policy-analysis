@@ -6,7 +6,7 @@
 1. 结构修复（数值/断链）——会改 frontmatter 的数值；
 2. 快照刷新——必须排在结构修复之后，否则 index 里的统计是修之前的；
 3. 来源清理——只删黑名单链接，平时是 no-op；
-4. 副本同步——export 把当前 tools/ 固化成专家包副本，必须等所有修复落盘。
+4. 专家包入口归位——scripts 必须是指向 tools 的链接，副本一律还原（放最后，等修复落盘）。
 
 **脚本不猜的，一律留给人工**：观点覆盖要联网检索、字段取值涉及判断、跨链归属要人定、
 文档口径冲突（AGENTS／README／专家定义各说一套）改哪份只有人能决定。
@@ -15,8 +15,8 @@ import re
 
 from pkb.checks import REGISTRY
 
-from . import export as export_action
-from . import snapshot, sources as sources_action
+from . import link as link_action
+from . import _snapshot as snapshot, sources as sources_action
 from ._proc import capture
 
 
@@ -47,18 +47,20 @@ def _step_sources(step):
     return 0
 
 
-def _step_export(step):
-    """4. 专家包副本同步：副本漂移是纯下游问题，保持同源不需要判断。"""
-    code, out = capture(export_action.run)
-    m = re.search(r'新增\s*(\d+)｜更新\s*(\d+)｜未变\s*(\d+)｜清理\s*(\d+)', out)
-    if not m:
-        print(f'[{step}] 副本同步            退出码 {code}')
-        return 0
-    added, updated, same, removed = (int(x) for x in m.groups())
-    print(f'[{step}] 副本同步            退出码 {code}'
-          + (f'，更新 {updated} 个脚本' if updated or added or removed
-             else '，与 tools 同源（无需同步）'))
-    return updated + added
+def _step_link(step):
+    """4. 专家包入口归位：只把形态改回链接，不涉及任何内容判断。
+
+    副本里有与 tools 不一致的改动时 `link` 会拒绝（exit 1）——那种情况必须人看，
+    fix 不替人丢弃别人写的代码，只报「需要人工确认」。
+    """
+    code, out = capture(link_action.run)
+    if code == 0:
+        changed = 0 if '无需改动' in out else 1
+        print(f'[{step}] 专家包入口          退出码 0'
+              + ('，已接回链接（原副本删除）' if changed else '，已是链接'))
+        return changed
+    print(f'[{step}] 专家包入口          退出码 {code}，副本里有改动需人工确认')
+    return 0
 
 
 def _conclude(changed):
@@ -96,5 +98,5 @@ def run(argv=None):
     step += 1
     changed += _step_sources(step)
     step += 1
-    changed += _step_export(step)
+    changed += _step_link(step)
     return _conclude(changed)
