@@ -5,9 +5,10 @@
 ## 一、位置
 
 - **库**：`/Users/Mr_Zhou/Documents/知识库/资料库`（Obsidian vault），`raw/` 只读。
-- **工具**：`/Users/Mr_Zhou/WorkBuddy/2026-09-23-07-58-53/tools/`，统一入口 `run.py`。
+- **工具**：`/Users/Mr_Zhou/WorkBuddy/2026-09-23-07-58-53/tools/`，统一入口 `run.py`（74 行，只解析参数→路由→聚合退出码）；实现在 `tools/pkb/` 包里。
+- **git（10-25 建立）**：只在工作区 init，**资料库未纳入版本控制**。远程 GitHub 私有库**尚未连**（`gh` 未装、无 SSH 公钥、无 credential helper），等用户给 URL → `git remote add origin … && git push -u origin main`。`归档/` 在 `.gitignore` 里（含 .obsidian 插件二进制）。
 - **工作区（10-25 整理后）**：顶层只剩 `tools/`、`automation-prompts/`、`.workbuddy/`、`归档/`。`归档/备份/` 放 8 个 `政策库备份-*`；`归档/旧版/` 放 3 个 `政策库归档-*`（旧版方案与模板／已合并页面／log长条目）；`归档/散件/` 放 log 备份、周观点 W42 补节前快照与样例、空的来源清理报告。**归档只读，不要再往里写。**
-- **专家包部署副本**：`~/.workbuddy/plugins/.../gov-policy-analyst/skills/policy-kb-tools/scripts/` 是 `tools/*.py` 的部署副本，由 `run.py export` 生成并写 `MANIFEST.json`（sha256）；`check_docs` 每次体检比对，漂移即 exit 1。**源永远是 `tools/`**，不许在专家包内改了再同步回来。
+- **专家包部署副本**：`~/.workbuddy/plugins/.../gov-policy-analyst/skills/policy-kb-tools/scripts/` 是 `tools/**/*.py`（含 pkb 递归）的部署副本，由 `run.py export` 生成并写 `MANIFEST.json`（键＝相对 `tools/` 的 posix 路径＋sha256；副本里的残留文件也会被清）；`check_docs` 每次体检比对，漂移／残留即 exit 1。**源永远是 `tools/`**，不许在专家包内改了再同步回来。
 - **已归档勿引用勿重建**：`政策跟踪运营方案`、`政策链总览`、`主题词表`。
 
 ## 二、库结构（10-25）
@@ -17,19 +18,23 @@
 
 ## 三、三个自动化与专家
 
-- 采集 `d1ca26c1` 每日 09:00／体检 `96885a01` 每 2 天 22:00／周观点 `3ef2d6b6` 周一 08:00。互不通信，**唯一交换介质是文件**（采集写台账→体检读；采集写信号→周观点读）。
+- 采集 `d1ca26c1` 每日 09:00／体检 `96885a01` 每 2 天 22:00／周观点 `3ef2d6b6` 周一 **10:30**（10-25 由 08:00 改后，晚于采集窗口收口）。互不通信，**唯一交换介质是文件**（采集写台账→体检读；采集写信号→周观点读）。
 - **政务分析助手** `gov-policy-analyst`（`~/.workbuddy/plugins/marketplaces/my-experts/plugins/`）。MD 不复述规则，只写读哪份、跑哪条、边界在哪。改它用 expert-manager skill（头像已生成，勿重跑）。
 - 提示词存档 `automation-prompts/`；**改提示词前先给差量等确认**；新建/删除自动化须用户要求。
 - **统一入口 ≠ 统一退出码**：按单项判定一律写「看输出里 `xxx.py` 那一行的退出码」。
 
-## 四、tools（14 文件，10-25 重构）
+## 四、tools（10-25 重构为四层，`tools/` 顶层只剩 `run.py`）
 
-- `lib.py` 机制层（路径／`read`／`parse_fm`／`extract_sections`／`table_rows`／`parse_date`／`iso_week`／`Reporter`／`summary`）。判据：同一件事出现两处以上就搬进来；**口径不进 lib**（黑名单单列 `source_blacklist.py`）。
-- **摘要行契约**：每个 `check_*.py` 调 `lib.summary()` 输出 `▸摘要: …`，入口只认这一行；明细走 `--only <名字>`，`--full` 只用于排查脚本自身。
-- 6 个 `check_*`：structure（唯一带 --fix，含体积警告）／views（覆盖率恒 0）／signals（断档）／week_coverage（`--week`）／analysis／docs（文档＋log＋域名＋库内不得直调脚本＋**动作表三处同集合**，刻意无 --fix）。
-- 其余：`refresh_snapshot`（只写 index，体检须先于 structure）／`clean_sources`（默认 dry-run）／`plan_backlog`／`status_report`／`week_sources`（周索引＋行号，省 99% 读入）／`export_expert`（同步专家包副本）／`run.py`（只调度）。
-- 动作 8 个：`status／check／fix／plan／week／export／sources／list`。参数按**真注册**判定，无认领 **exit 2** 并明说结论不含该窗口。扩展约定见 AGENTS 第十节四条。
-- `fix` 只修快照、frontmatter 数值、唯一相似断链（≥0.85 单候选）、黑名单来源；跳过 log.md；多候选不猜。
+- **分层单向**：`run.py → pkb.actions → pkb.checks → pkb.domain → pkb.core`。低层不许 import 高层，`core` 不许出现「政策」二字。
+- `pkb/core/`：paths（唯一路径，`TOOLS = parents[2]`）／fs（`py_files(TOOLS)` 是「哪些文件该导出/校验」唯一出口）／fm／md／report（`Verdict` 枚举 + `Result`，**`summary` 无默认值**→「有退出码没摘要」写不出来；`Reporter.to_lines()`）。
+- `pkb/domain/`：blacklist（`BLACK`／`BAD_SUBJECT`／`DOC_MUST_MENTION`／`is_bad`）／fields（五领域等枚举）／chains（`FIELD_MAP`）／legacy（`LEGACY_WEEKS`）。**口径只能住这里**。
+- `pkb/checks/`：6 项 + `REGISTRY`（`Spec(name, module, needs_all, flags, fixable)`）。**注册表即清单**，不再按文件名发现；`run()` 返回 `Result`、不打印、不 `sys.exit`。
+- `pkb/actions/`：8 个动作 + `_proc`（`sh`／`capture` 用 `redirect_stdout` 抓子步骤数字）。
+- **摘要行契约**：`Result.summary` 就是 `▸摘要`；明细在 `Result.lines`，打多少由 `actions/check.py` 一层决定（`--only`／`--full`）。
+- 动作 8 个：`status／check／fix／plan／week／export／sources／list`。参数按**真注册**判定，无认领 **exit 2** 并明说结论不含该窗口。扩展方式见 AGENTS 第十节四条（改注册表，不靠命名）。
+- `check_docs` 新增**口径单源扫描**：`ast` 取代码里的字符串常量，与 `pkb.domain.__all__` 现读的词典比对，命中即 exit 1；`REQUIRED_FIELDS`（字段名＝读数据的键）排除。词典不另写，domain 加一项自动覆盖。
+- `tests/`（41 条）：`test_md`（解析）／`test_rules`（口径＋扫描器自测）／`test_smoke`（`Result` 契约、非法输入是 `BAD_INPUT`、导入无副作用、分层不反向、checks 不 `sys.exit`）。
+- `fix` 只修快照、frontmatter 数值、唯一相似断链（≥0.85 单候选）、黑名单来源、副本同步；跳过 log.md；多候选不猜。
 
 ## 五、踩过的坑
 
@@ -39,6 +44,9 @@
 4. **单源化本身就是修漏洞**：黑名单合并时发现两份清单已漂移。
 5. **静默丢弃比报错危险**：拼错的参数照跑 exit 0，调用方以为窗口核过了。
 6. 并行子代理必 429，批量补录走主通道；`%%` 注释不成对会吞正文，用 `<!-- -->`；能点开≠能核验。
+7. **判据写进解释性文本里会被自己误伤**：`sys.exit(` 判据被 docstring 里的「原来是 print + sys.exit(2)」误报；`python3 -m pkb…` 写进 AGENTS 说明就被直调正则判成违规。判据认**调用形态**（行首调用／ast 常量），说明文字用描述性措辞。
+8. **macOS 是 BSD grep**：`grep "a\|b"` 不支持 `\|` 交替，会静默无输出（排查时白白怀疑文件编码）。用 `grep -E` 或 Grep 工具。
+9. **AST 优于逐行正则**：注释/docstring 里举的例不能被当代码；第一版口径扫描把 `docs.py` 自己的 docstring 判成违规。
 
 ## 六、三页分工
 

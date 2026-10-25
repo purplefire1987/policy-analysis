@@ -84,5 +84,46 @@ class TestAnalysis(unittest.TestCase):
         self.assertIn('专题评估', ANALYSIS_TYPES)
 
 
+class TestDomainGuard(unittest.TestCase):
+    """口径单源扫描器（设计规则三的执行者）自测。
+
+    扫描器本身如果永远报绿，就等于没有——所以这里钉三条：
+    词典确实覆盖了名单、字段名不被误当口径、docstring 里的举例不算违规。
+    """
+
+    def test_词典覆盖黑名单与归档周(self):
+        from pkb.checks.docs import guarded_literals
+        guard = guarded_literals()
+        for k in BLACK:
+            self.assertEqual(guard.get(k), 'BLACK', f'{k} 未被扫描覆盖')
+        for wk in LEGACY_WEEKS:
+            self.assertEqual(guard.get(wk), 'LEGACY_WEEKS', f'{wk} 未被扫描覆盖')
+
+    def test_字段名不进词典(self):
+        # 字段名是「读数据的键」，不是口径；进词典会逼所有人写 fm.get(KEY['领域'])
+        from pkb.checks.docs import guarded_literals
+        guard = guarded_literals()
+        for f in REQUIRED_FIELDS:
+            self.assertNotIn(f, guard, f'字段名 {f} 不该当地雷')
+
+    def test_只认代码常量不认注释与整句(self):
+        import tempfile
+        import textwrap
+        from pkb.checks.docs import code_strings
+        src = textwrap.dedent('''
+            """说明：'jiemian.com' 不许硬编码。"""
+            # 注释里的 '2026-W40' 也不算违规
+            A = 'jiemian.com'
+            B = f'应为 2026-W40'
+        ''')
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / 'sample.py'
+            p.write_text(src, encoding='utf-8')
+            vals = [v for _, v in code_strings(p)]
+        self.assertIn('jiemian.com', vals)                 # 裸常量：命中
+        self.assertNotIn('2026-W40', vals)                 # 只在整句里出现：不算抄口径
+        self.assertFalse([v for v in vals if '不许硬编码' in v], 'docstring 被当成代码了')
+
+
 if __name__ == '__main__':
     unittest.main()

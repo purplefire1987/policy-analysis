@@ -6,7 +6,9 @@
 `check_*` 里出现字面量 '2026-W40'、'金融强国'、'jiemian.com' 都算违规——
 它们必须住在这里，否则改口径要翻遍所有脚本。
 """
-from .blacklist import BLACK, BAD_SUBJECT, is_bad       # noqa: F401
+from .blacklist import (                               # noqa: F401
+    BLACK, BAD_SUBJECT, DOC_MUST_MENTION, is_bad,
+)
 from .fields import (                                   # noqa: F401
     DOMAINS, STAT_DOMAINS, IMPACTS, STATUSES, REQUIRED_FIELDS, CARD_SIZE_WARN,
     ANALYSIS_TYPES, ANALYSIS_WORD_LIMIT, ANALYSIS_SPINE,
@@ -15,7 +17,7 @@ from .chains import FIELD_MAP                           # noqa: F401
 from .legacy import LEGACY_WEEKS                        # noqa: F401
 
 __all__ = [
-    'BLACK', 'BAD_SUBJECT', 'is_bad',
+    'BLACK', 'BAD_SUBJECT', 'DOC_MUST_MENTION', 'is_bad',
     'DOMAINS', 'STAT_DOMAINS', 'IMPACTS', 'STATUSES', 'REQUIRED_FIELDS', 'CARD_SIZE_WARN',
     'ANALYSIS_TYPES', 'ANALYSIS_WORD_LIMIT', 'ANALYSIS_SPINE',
     'FIELD_MAP',
