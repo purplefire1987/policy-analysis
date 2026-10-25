@@ -124,7 +124,7 @@ class TestDomainGuard(unittest.TestCase):
     """
 
     def test_词典覆盖黑名单与归档周(self):
-        from pkb.checks.docs import guarded_literals
+        from pkb.checks.docs.literals import guarded_literals
         guard = guarded_literals()
         for k in BLACK:
             self.assertEqual(guard.get(k), 'BLACK', f'{k} 未被扫描覆盖')
@@ -133,7 +133,7 @@ class TestDomainGuard(unittest.TestCase):
 
     def test_字段名不进词典(self):
         # 字段名是「读数据的键」，不是口径；进词典会逼所有人写 fm.get(KEY['领域'])
-        from pkb.checks.docs import guarded_literals
+        from pkb.checks.docs.literals import guarded_literals
         guard = guarded_literals()
         for f in REQUIRED_FIELDS:
             self.assertNotIn(f, guard, f'字段名 {f} 不该当地雷')
@@ -141,7 +141,7 @@ class TestDomainGuard(unittest.TestCase):
     def test_只认代码常量不认注释与整句(self):
         import tempfile
         import textwrap
-        from pkb.checks.docs import code_strings
+        from pkb.checks.docs.literals import code_strings
         src = textwrap.dedent('''
             """说明：'jiemian.com' 不许硬编码。"""
             # 注释里的 '2026-W40' 也不算违规

@@ -89,7 +89,7 @@ class TestLayering(unittest.TestCase):
 
     def test_checks不依赖actions(self):
         root = Path(__file__).resolve().parents[1] / 'pkb' / 'checks'
-        for p in root.glob('*.py'):
+        for p in root.rglob('*.py'):          # rglob：包内子模块同样受约束
             text = p.read_text(encoding='utf-8')
             self.assertNotIn('pkb.actions', text, f'{p.name} 反向依赖了 pkb.actions')
 
@@ -102,7 +102,7 @@ class TestLayering(unittest.TestCase):
         """
         root = Path(__file__).resolve().parents[1] / 'pkb' / 'checks'
         call = re.compile(r'(?m)^\s*sys\.exit\s*\(')
-        for p in root.glob('*.py'):
+        for p in root.rglob('*.py'):          # rglob：包内子模块同样受约束
             text = p.read_text(encoding='utf-8')
             self.assertIsNone(call.search(text), f'{p.name} 里出现了 sys.exit 调用')
 
