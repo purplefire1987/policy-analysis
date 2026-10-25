@@ -31,13 +31,13 @@
 - **`core` 的规则（10-25 修订）**：`core` **不含口径**（名单/枚举/判据），但**可以有目录名与结构名**（`wiki/政策卡片`、`### 日期 · 标题`）——前者是「规则是什么」，后者是「数据在哪」。原文「不许出现『政策』二字」与必需的路径常量直接冲突，已废。判据是「与 domain 某取值同值」，不是「出现某个词」。
 - `pkb/core/`：paths（唯一路径，`TOOLS = parents[2]`）／fs（`py_files(TOOLS)` 是「哪些文件该导出/校验」唯一出口）／fm／md／report（`Verdict` 枚举 + `Result`，**`summary` 无默认值**→「有退出码没摘要」写不出来；`Reporter.to_lines()`）。
 - `pkb/domain/`：blacklist（`BLACK`／`BAD_SUBJECT`／`DOC_MUST_MENTION`／`is_bad`）／fields（五领域等枚举）／chains（`FIELD_MAP`）／legacy（`LEGACY_WEEKS`）。**口径只能住这里**。
-- `pkb/checks/`：**7 项** + `REGISTRY`（`Spec(name, module, needs_all, flags, fixable)`）。**注册表即清单**，不再按文件名发现；`run()` 返回 `Result`、不打印、不 `sys.exit`。
+- `pkb/checks/`：**8 项** + `REGISTRY`（`Spec(name, module, needs_all, flags, fixable)`）。**注册表即清单**，不再按文件名发现；`run()` 返回 `Result`、不打印、不 `sys.exit`。`docs` 是**包**（10-26 由 626 行单文件拆成 9 个，最长 114 行；按「被核对对象」分组 declared／consistency／ledger／expert_pkg／hygiene／dnsource／literals ＋ `_state`，15 项检查输出逐字不变；执行顺序即报告顺序，**不许重排**）。
 - **`check_health.py`（10-25 新增）**：采集健康三分状态——`正常`／`已跑但 0 新增`（没采到，别重跑自动化）／`根本没跑`（超 1 天节拍）。另交叉核对「采集灯 vs 日志」（矛盾即 FAIL）与「0 也写 0」（**固定生效日 2026-10-24**，更早的 `—` 只提示；不用滑动窗口，否则违规拖两周自动消失）。
 - `pkb/actions/`：8 个动作 + `_proc`（`sh`／`capture` 用 `redirect_stdout` 抓子步骤数字）。
 - **摘要行契约**：`Result.summary` 就是 `▸摘要`；明细在 `Result.lines`，打多少由 `actions/check.py` 一层决定（`--only`／`--full`）。
 - 动作 8 个：`status／check／fix／plan／week／link／sources／list`（`link` 原叫 `export`，10-25 晚改）。**一模块一动作，文件名即动作名，下划线开头是内部件**（`_proc`／`_snapshot`）；`run.py` 的 `ACTIONS` 与 `pkb/actions/*.py` 由 `test_smoke` 钉住一一对应，`list` 从包里发现模块不手写名单。参数按**真注册**判定，无认领 **exit 2** 并明说结论不含该窗口。扩展方式见 AGENTS 第十节四条（改注册表，不靠命名）。
 - `check_docs` 新增**口径单源扫描**：`ast` 取代码里的字符串常量，与 `pkb.domain.__all__` 现读的词典比对，命中即 exit 1；`REQUIRED_FIELDS`（字段名＝读数据的键）排除。词典不另写，domain 加一项自动覆盖。
-- `tests/`（**74 条**）：`test_md`（解析）／`test_rules`（口径＋扫描器自测）／`test_health`（三分状态、灯矛盾、无轮次、0也写0）／`test_link`（专家包四态、三类差异、拒绝删除、force 后入口可跑）／`test_weeks`（**同分裁决：同批模板化标题各归各行**、真合并须写「合并」二字）／`test_smoke`（`Result` 契约、非法输入是 `BAD_INPUT`、导入无副作用、分层不反向、checks 不 `sys.exit`、**单函数 ≤50 行**、**动作模块↔ACTIONS 一一对应**）。
+- `tests/`（**145 条**）：`test_md`（解析）／`test_rules`（口径＋扫描器自测）／`test_health`（三分状态、灯矛盾、无轮次、0也写0）／`test_link`（专家包四态、三类差异、拒绝删除、force 后入口可跑）／`test_weeks`（**同分裁决：同批模板化标题各归各行**、真合并须写「合并」二字）／`test_judgments`（编号可回原文）／`test_fetch`（切小节、抽正文、认附件、分级、幂等）／`test_views`（`（待补全）`必算未覆盖）／`test_signals`（坏周号抛错不静默、断档四档边界）／`test_analysis`（字数口径）／`test_structure`（断链过滤三侧）／`test_docs`（log 新旧分界、类型白名单）／`test_smoke`（`Result` 契约、非法输入是 `BAD_INPUT`、导入无副作用、分层不反向、checks 不 `sys.exit`（**rglob，包内也查**）、**单函数 ≤50 行**、**动作模块↔ACTIONS 一一对应**）。
 - **CI（10-25 挂上）**：`.github/workflows/ci.yml`，每次 push/PR 跑 pyflakes ＋ **空库** pytest（`POLICY_KB_VAULT` 指空目录＝最强契约输入，六项检查全走「文件不存在」分支）。CI **不跑** `run.py check`（要真库，守门人是体检自动化）。
 - `fix` 只修快照、frontmatter 数值、唯一相似断链（≥0.85 单候选）、黑名单来源、副本同步；跳过 log.md；多候选不猜。
 
@@ -52,6 +52,8 @@
 7. **判据写进解释性文本里会被自己误伤**：`sys.exit(` 判据被 docstring 里的「原来是 print + sys.exit(2)」误报；`python3 -m pkb…` 写进 AGENTS 说明就被直调正则判成违规。判据认**调用形态**（行首调用／ast 常量），说明文字用描述性措辞。
 8. **macOS 是 BSD grep**：`grep "a\|b"` 不支持 `\|` 交替，会静默无输出（排查时白白怀疑文件编码）。用 `grep -E` 或 Grep 工具。
 9. **AST 优于逐行正则**：注释/docstring 里举的例不能被当代码；第一版口径扫描把 `docs.py` 自己的 docstring 判成违规。
+10. **白名单拼进识别正则会让自己失效**：`LOG_HEAD` 原用 `'|'.join(LOG_TYPES)` 构造，类型写错的条目匹配不上、落进「历史条目」分支被静默豁免，那条 `bad_type` 报错分支从未触发过——「类型限五类」等于不存在。识别放宽成任意串、白名单另查，才验得出来（10-26 审计发现）。
+11. **结构化断言查不出叙述性描述**：`check_docs` 查节名、动作表集合、结构数字、引用有效性，但专家定义里「脚本会自动发现」「raw 只读」这类句子它不报。10-26 审计实证 6 处漂移全在叙述层——文档漂移只能人读，别把脚本当完整防线。
 
 ## 六、三页分工
 
