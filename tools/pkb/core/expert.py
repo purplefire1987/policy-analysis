@@ -51,17 +51,30 @@ def link_target(dest=None):
         return ''
 
 
+# 副本里出现这些不算「差异」：解释器缓存与访达的垃圾文件，删了没人损失。
+NOISE = {'.DS_Store'}
+
+
+def _is_noise(p):
+    return p.name in NOISE or p.suffix == '.pyc' or '__pycache__' in p.parts
+
+
 def drift(dest=None, src=None):
     """副本与源树的差异：[(相对路径, '改过'|'包内多'|'包内缺')]。
 
     只在 state == COPY 时有意义。要删一个目录之前，得先能说出里面有什么不一样——
     因为「不一样」往往意味着有人把修复写在了错误的副本上，那不是可以静默丢弃的东西。
+
+    **比的是全部文件，不只是 .py**（2026-10-26 改）：此前只 `rglob('*.py')`，于是副本里
+    一份 README、一张便签、一个 MANIFEST.json 都不算差异——`_clear()` 会把它们连同目录
+    一起 rmtree 掉，一句都不说。而这正是本函数存在的理由：「能说出里面有什么不一样」。
+    只比 .py 的话，这句话对非代码文件是假的。缓存与 .DS_Store 属噪音，不计入。
     """
     root, src_root = Path(dest or EXPERT_SCRIPTS), Path(src or TOOLS)
     if not root.is_dir():
         return []
     have = {p.relative_to(root).as_posix(): p
-            for p in root.rglob('*.py') if '__pycache__' not in p.parts}
+            for p in root.rglob('*') if p.is_file() and not _is_noise(p)}
     want = {p.relative_to(src_root).as_posix(): p for p in py_files(src_root)}
     out = []
     for rel in sorted(have):

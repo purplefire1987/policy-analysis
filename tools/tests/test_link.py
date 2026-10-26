@@ -96,6 +96,26 @@ class TestDrift(unittest.TestCase):
             (src / 'pkb' / 'core' / 'b.py').write_text('B = 1\n', encoding='utf-8')
             self.assertEqual(dict(expert.drift(dest, src=src)).get('pkb/core/b.py'), '包内缺')
 
+    def test_非py文件也算差异(self):
+        """副本里的 README／便签也必须报出来——否则 rmtree 会把它们连目录一起删掉，
+        而 `link` 的全部承诺就是「删之前能说出里面有什么不一样」。"""
+        with tempfile.TemporaryDirectory() as d:
+            src, dest = self._copy(d)
+            (dest / 'README-副本便签.md').write_text('别删我\n', encoding='utf-8')
+            self.assertEqual(dict(expert.drift(dest, src=src)).get('README-副本便签.md'),
+                             '包内多')
+
+    def test_缓存与访达垃圾不算差异(self):
+        """噪音不该挡路：加了 --force 才能删的东西，不该包括解释器缓存和 .DS_Store。"""
+        with tempfile.TemporaryDirectory() as d:
+            src, dest = self._copy(d)
+            (dest / '.DS_Store').write_bytes(b'\x00')
+            (dest / 'pkb' / '__pycache__').mkdir()
+            (dest / 'pkb' / '__pycache__' / 'a.cpython-311.pyc').write_bytes(b'\x00')
+            paths = [rel for rel, _ in expert.drift(dest, src=src)]
+            self.assertNotIn('.DS_Store', paths)
+            self.assertFalse([p for p in paths if '.pyc' in p or '__pycache__' in p])
+
     def test_不存在时返回空(self):
         with tempfile.TemporaryDirectory() as d:
             self.assertEqual(expert.drift(Path(d) / 'nope', src=TOOLS), [])

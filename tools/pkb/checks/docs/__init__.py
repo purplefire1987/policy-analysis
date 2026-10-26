@@ -41,10 +41,15 @@ EXPERT = EXPERT_MD
 
 
 def _load_docs():
-    """被交叉核对的那几份文档，一次读齐。缺哪份就传空串，由各检查自己判。"""
+    """被交叉核对的那几份文档，一次读齐。缺哪份就传空串，由各检查自己判。
+
+    **只放真被读的键**：`index` 曾在这里读进来却没有任何检查用它，而它让
+    「本检查核对 AGENTS／index／README…」这句话听起来是真的（2026-10-26 核出并删）。
+    加键之前先确有一个检查会读它——否则读盘只是把「已核对」演给读者看。
+    README 与 运行状态 目前只被节拍比对用到，不是全量核对。
+    """
     return {
         'AGENTS': read(AGENTS, ''),
-        'index': read(INDEX, ''),
         'README': read(README, ''),
         '专家定义': read(EXPERT, ''),
         '专家包README': read(EXPERT_DIR / 'README.md', ''),
