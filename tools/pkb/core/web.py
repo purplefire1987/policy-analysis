@@ -99,6 +99,33 @@ def decode(body):
         return body.decode('utf-8', 'ignore')
 
 
+# 「像文字」的字符：汉字、ASCII 可见字符、中日韩标点、全角标点。
+# ASCII 标点必须收进来——清单类正文常是 `| 编码 | 数量 |` 的表，只认字母数字会把表判成乱码。
+READABLE = re.compile(r'[\u4e00-\u9fff\u3000-\u303f\uff00-\uffef\x20-\x7e]')
+
+
+def looks_binary(text, limit=6000):
+    """这段正文是文字，还是一串解错了的字节。
+
+    为什么需要这道检查：`decode()` 用 `errors='ignore'` 解二进制**不会失败**——它把
+    无法解码的字节丢掉，剩下的拼成「看着像字、其实是字节」的东西，长度照样过 600 字
+    门槛，存档于是写上「正文完整性: 完整」。2026-10-26 查到一份实物：2026-10-22
+    工信部产业基础能力提升规划（光明网那篇），正文整段是这样的——`file` 判为 data、
+    检索按二进制跳过，而 frontmatter 写着「完整」。**物证自己说自己可用，其实不可用。**
+
+    两条判据，先硬后软：
+    1. **出现 NUL 字节即二进制**。网页正文里不可能有 `\\x00`，这一条零误判。
+    2. **异常字符占比 > 0.15**。实测：sasac／mofcom／cas 三页正文 0.001~0.043，
+       那份坏页 0.246。两端都不靠调参过日子。
+    """
+    s = ''.join(text.split())[:limit]
+    if not s:
+        return False
+    if '\x00' in s:
+        return True
+    return 1 - len(READABLE.findall(s)) / len(s) > 0.15
+
+
 def _plain(block):
     block = re.sub(r'(?is)<(script|style|noscript)[^>]*>.*?</\1>', ' ', block)
     block = re.sub(r'(?is)<!--.*?-->', ' ', block)

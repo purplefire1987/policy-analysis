@@ -250,6 +250,9 @@ def attempt(e, idx, args, stats, tmpdir):
     h = web.decode(raw)
     lines = web.body_lines(h)
     body = '\n'.join(lines)
+    if web.looks_binary(body):
+        stats['fail'] += 1
+        return 'fail', '取回的不是网页文本（二进制或压缩流解错），未落盘——别把乱码当正文存档'
     if len(body) < MIN_BODY:
         stats['fail'] += 1
         return 'fail', f'正文抽取为空（{len(body)} 字）'

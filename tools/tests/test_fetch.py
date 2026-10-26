@@ -127,6 +127,25 @@ class TestWeb(unittest.TestCase):
         self.assertTrue(web.is_listing('https://www.ndrc.gov.cn'))
         self.assertFalse(web.is_listing('https://www.gov.cn/zhengce/content_1.htm'))
 
+    def test_乱码正文判为非文本(self):
+        """实物：`decode(errors='ignore')` 把二进制解成一串「看着像字」的东西，
+        长度过 600 字门槛，存档于是写「正文完整性: 完整」。判据必须拦住它。"""
+        # ① NUL 字节：网页正文不可能有，零误判
+        self.assertTrue(web.looks_binary('\x00\x00\x00 正文正文'))
+        # ② 解错编码得到的其它文字（西里尔／叙利亚文一类），占比高
+        garbage = ''.join(chr(c) for c in range(0x0700, 0x0740)) * 6
+        self.assertTrue(web.looks_binary(garbage))
+
+    def test_正常正文不误判(self):
+        body = ('工业和信息化部等八部门印发《产业基础能力提升"十五五"规划》。规划提出，'
+                '到2030年，产业基础薄弱环节取得实质性突破，重点领域基础产品和技术'
+                '供给能力明显增强，产业链供应链韧性和安全水平显著提升。')
+        self.assertFalse(web.looks_binary(body))
+        # 英文页、数字表也不能误判
+        self.assertFalse(web.looks_binary('Note: the tariff rate is 12.5% (2026). See Annex A-3, p.17.'))
+        # 清单类附件转成的表格正文：ASCII 标点占大半，更不能判成乱码
+        self.assertFalse(web.looks_binary('| 序号 | 编码 | 数量 |\n|---|---|---|\n| 1 | 8501.10 | 12 |'))
+
 
 class TestArchive(unittest.TestCase):
     """端到端：写一份、再跑一次必须是「已存档跳过」。"""
