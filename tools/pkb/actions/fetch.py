@@ -36,13 +36,14 @@ import tempfile
 import time
 from pathlib import Path
 
-from pkb.core import ARTICLE_DIR, REPORT_DIR, CARD_DIR, read, web, doc
+from pkb.core import ARTICLE_DIR, CARD_DIR, read, web, doc
 from pkb.domain import sources
 
-ORIGIN, MEDIA, NOT_FIRST = sources.LEVELS          # 口径只从 domain 取，不写裸字符串
+ORIGIN = sources.LEVELS[0]      # 只有「原文」落盘；三级取值仍从 domain 取，不写裸字符串
 SEC = re.compile(r'^### (\d{4}-\d{2}-\d{2}) · (.+?)\s*$')
 STOP = re.compile(r'^#{2,3} ')
 LINK = re.compile(r'\[政策原文\]\((https?://[^)\s]+)\)')
+DOC_EXT = re.compile(r'\.(pdf|docx?|wps)(?:$|\?)', re.I)      # 正文是文档而非网页
 BARE = re.compile(r'政策原文[^\n]{0,20}?(https?://[^\s)）|]+)')
 OFFICE = re.compile(r'\*\*发文机关\*\*[：:]\s*([^｜|\n]+)')
 DOCNO = re.compile(r'\*\*文号\*\*[：:]\s*([^｜|\n]+)')
@@ -133,17 +134,14 @@ def collect(start, end):
 def stored_urls():
     """已归档的链接集合——幂等的唯一依据（文件名不可靠，标题天天改写）。
 
-    **两个目录都要扫**（2026-10-26）：报道类已移到 `raw/reports/`，
-    只扫 `articles` 会让那 26 条 URL 在下次 fetch 时被当成「没存过」重新抓回
-    `articles`——分流白做，而且每跑一次多一份。
-    这里判的是「这个 URL 处理过没有」，不是「它算不算一手」；算不算由 `sources.level` 判。
+    只扫 `raw/articles/`：现在只存原文，报道类不落盘。判的是「这个 URL 处理过没有」，
+    不是「它算不算一手」——算不算由 `sources.level` 判，在 `attempt` 里先拦。
     """
     urls = set()
-    for d in (ARTICLE_DIR, REPORT_DIR):
-        if not d.exists():
-            continue
-        for p in d.glob('*.md'):
-            urls.update(STORED.findall(read(p, '')))
+    if not ARTICLE_DIR.exists():
+        return urls
+    for p in ARTICLE_DIR.glob('*.md'):
+        urls.update(STORED.findall(read(p, '')))
     return urls
 
 
@@ -202,8 +200,6 @@ def quality_of(e, body, n_att):
     2026-10-26 实测：一份《印发通知》正文只有 396 字、清单是图片，
     存档却写着「完整」，等于告诉后来的人「不用再核了」。
     """
-    if e['level'] == MEDIA:
-        return '报道全文（非文件本身，须回原文核）'
     if len(body) >= 600:
         return '完整'
     if n_att:
@@ -232,6 +228,33 @@ def build(e, lines, degraded, atts_md, n_att, n_ok):
         ('\n\n## 附件原文\n\n' + atts_md if atts_md else '') + '\n'
 
 
+def attempt_doc(e, args, stats, tmpdir):
+    """正文本身就是 PDF／Word：先落临时文件，再按附件同一套转文本。
+
+    为什么单列（2026-10-26）：一手源里 PDF 很常见（工作方案、标准全文、白皮书），
+    走抽 HTML 正文那条路只会拿到二进制，`looks_binary` 把它拦下——于是「链接是对的，
+    却永远存不进去」，报的还是「抓取失败」，看起来像链接错。附件能转、正文不能转，
+    本来就是同一个能力的两半。
+    """
+    code, raw, degraded = web.fetch(e['url'])
+    if not raw:
+        stats['fail'] += 1
+        why = f'HTTP {code}' if code else '无响应（超时或域名解析失败）'
+        return 'fail', f'取回失败：{why}'
+    ext = Path(e['url'].split('?')[0]).suffix.lower()
+    tmp = Path(tempfile.mkdtemp(dir=tmpdir, prefix='body-')) / ('x' + ext)
+    tmp.write_bytes(raw)
+    text = doc.to_text(tmp)
+    if not text or not text.strip():
+        stats['fail'] += 1
+        return 'fail', f'正文是 {ext}，转文本为空——须人工打开另存，别把空文件当存档'
+    lines = [ln.rstrip() for ln in text.splitlines() if ln.strip()]
+    if args['dry']:
+        stats['new'] += 1
+        return 'dry', f'{len("".join(lines))} 字（{ext} 转换）'
+    return write_file(e, lines, degraded, [], stats, tmpdir, 0)
+
+
 def attempt(e, idx, args, stats, tmpdir):
     """处理一条：跳过／不入档／抓取／写盘。返回 (动作标签, 说明)，由 main 统一打印。"""
     if not e['url']:
@@ -243,12 +266,14 @@ def attempt(e, idx, args, stats, tmpdir):
     if e['url'] in stats['seen']:
         stats['skip'] += 1
         return 'skip', '已存档'
-    if e['level'] == NOT_FIRST:
+    if e['level'] != ORIGIN:
         stats['nofirst'] += 1
-        return 'nofirst', e['why']
+        return 'nofirst', e['why'] + '——不落盘；回官网找文件页改正卡片链接后重跑'
     if web.is_listing(e['url']):
         stats['nofirst'] += 1
         return 'nofirst', '链接是栏目页，无具体文件页'
+    if DOC_EXT.search(e['url']):
+        return attempt_doc(e, args, stats, tmpdir)
     code, raw, degraded = web.fetch(e['url'])
     if not raw:
         stats['fail'] += 1
@@ -267,7 +292,7 @@ def attempt(e, idx, args, stats, tmpdir):
     if args['keep']:
         keep_page(e, raw)
     if args['dry']:
-        stats['new' if e['level'] == ORIGIN else 'report'] += 1
+        stats['new'] += 1
         return 'dry', f'{len(body)} 字，附件 {len(atts)}（{e["why"]}）'
     return write_file(e, lines, degraded, atts, stats, tmpdir, idx)
 
@@ -282,27 +307,26 @@ def keep_page(e, raw):
 def write_file(e, lines, degraded, atts, stats, tmpdir, idx):
     """落盘。附件先转文本再写，免得正文写完了附件还在失败。
 
-    **按口径分目录**（2026-10-26）：`原文` 进 `raw/articles/`，`官方报道` 进 `raw/reports/`。
-    改这一行的理由：此前两者同放 `articles`，一份央视记者稿与国办发文件并排躺了几个月，
-    目录名「一手」于是变成一句空话——58 份里 29% 不是文件本身，且没人知道。
-    报道不是没价值，但它证明的是「有这件事」，不是「文件这么写」，所以分开住。
+    **只有「原文」才落盘**（2026-10-26 口径）：`raw/articles/` 是「文件本身」，
+    目录名就是承诺。官方报道与非一手链接一律不写盘，只在报告里点名要求回去换链接
+    ——存一段转述，两年后拿它当证据，等于把二手当一手用。
+    （原方案曾设 `raw/reports/` 中转，用户 2026-10-26 决定不设中间层：报道类
+    按内容归政策卡片或政策信号，`raw/` 下只留文件本身。）
     """
     atts_md, n_ok, skipped = fetch_attachments(atts, idx, tmpdir)
     name = fname(e)
-    is_origin = e['level'] == ORIGIN
-    base = ARTICLE_DIR if is_origin else REPORT_DIR
-    dest, n = base / name, 2
+    dest, n = ARTICLE_DIR / name, 2
     while dest.exists():
-        dest, n = base / f'{name[:-3]}-{n}.md', n + 1
+        dest, n = ARTICLE_DIR / f'{name[:-3]}-{n}.md', n + 1
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(build(e, lines, degraded, atts_md, len(atts), n_ok), encoding='utf-8')
     stats['seen'].add(e['url'])
-    stats['new' if is_origin else 'report'] += 1
+    stats['new'] += 1
     stats['chars'] += len('\n'.join(lines))
     note = f'{len("\n".join(lines))} 字，附件 {len(atts)}（转成 {n_ok}）'
     if skipped:
         note += f'，未转：{"、".join(sorted(skipped))}'
-    return ('new' if is_origin else 'report'), f'{dest.name} ｜ {note}'
+    return 'new', f'{dest.name} ｜ {note}'
 
 
 def run(argv=None):
@@ -314,17 +338,17 @@ def run(argv=None):
         print(f'✗ 找不到 raw/ 目录：{ARTICLE_DIR.parent}（POLICY_KB_VAULT 设错了？）')
         return 1
     entries = collect(args['start'], args['end'])
-    stats = {'new': 0, 'report': 0, 'skip': 0, 'nofirst': 0, 'fail': 0, 'chars': 0,
+    stats = {'new': 0, 'skip': 0, 'nofirst': 0, 'fail': 0, 'chars': 0,
              'seen': stored_urls()}
     tmpdir = tempfile.mkdtemp(prefix='pkb-fetch-') if not args['dry'] else None
     print(f'\n【fetch】窗口 {args["start"]} ~ {args["end"]}，卡片内 {len(entries)} 条')
     try:
         for i, e in enumerate(entries, 1):
             tag, note = attempt(e, i, args, stats, tmpdir)
-            mark = {'new': '✓ 新存', 'report': '~ 存报道', 'dry': '· 将存', 'skip': '· 跳过',
+            mark = {'new': '✓ 新存', 'dry': '· 将存', 'skip': '· 跳过',
                     'nofirst': '! 无一手源', 'fail': '✗ 失败'}[tag]
             print(f'  {mark:<9} {e["date"]} {e["title"][:34]} ｜ {note}')
-            if tag in ('new', 'report', 'dry'):
+            if tag in ('new', 'dry'):
                 time.sleep(THROTTLE)
     finally:
         if tmpdir:
@@ -335,6 +359,5 @@ def run(argv=None):
     print(f'\n▸摘要: fetch {args["start"]}~{args["end"]} 卡片 {len(entries)} 条 · '
           f'新存 {stats["new"]}（{stats["chars"]} 字）· 已存跳过 {stats["skip"]} · '
           f'无一手源 {stats["nofirst"]} · 抓取失败 {stats["fail"]}'
-          + (f' · 存报道区 {stats["report"]}' if stats['report'] else '')
           + (f'  ← {miss} 条需登记台账' if miss else '  ✓'))
     return 0

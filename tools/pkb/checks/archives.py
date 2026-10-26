@@ -17,13 +17,14 @@
 本项恒 exit 0：它报的是「两份物证不自洽」的线索，改哪边仍要人核。
 """
 import argparse
+import difflib
 import re
 
-from pkb.core import (ARTICLE_DIR, REPORT_DIR, CARD_DIR, parse_date, parse_fm, read,
+from pkb.core import (ARTICLE_DIR, CARD_DIR, SIGNAL_DIR, parse_date, parse_fm, read,
                       Result, Verdict)
 from pkb.domain import ARCHIVE_DATE_TOLERANCE, LEVELS
 
-ORIGIN, MEDIA, _NOT_FIRST = LEVELS      # 端口径只从 domain 取，不写裸字符串
+ORIGIN = LEVELS[0]      # 口径只从 domain 取，不写裸字符串
 
 SEC = re.compile(r'^### (\d{4}-\d{2}-\d{2}) · (.+)$', re.M)
 NO = re.compile(r'\*\*文号\*\*：\s*([^｜|\n]+)')
@@ -87,9 +88,27 @@ def match(arc, idx):
     return hit[0] if len(hit) == 1 else None
 
 
+def signal_index():
+    """信号条目清单：[{date, title, key}]。
+
+    为什么也要扫这里（2026-10-26 晚）：按「信号≠政策」口径转记之后，有些一手存档
+    服务于信号而不是卡片——央行《关于人民币汇率的政策立场》就是一份正式发布文本，
+    它进了 `raw/articles/`，但对应条目在政策信号页。只认卡片会把它报成「卡片漏了」，
+    而它并不缺，只是归属不同。**报错了的判据比不报更坏**（会教人以后绕开它）。
+    """
+    out = []
+    if not SIGNAL_DIR.exists():
+        return out
+    for p in sorted(SIGNAL_DIR.glob('*.md')):
+        for m in SEC.finditer(read(p, '')):
+            out.append({'date': parse_date(m.group(1)),
+                        'title': m.group(2).strip(), 'key': norm(m.group(2))})
+    return out
+
+
 def scan():
     """返回 (日期一致条数, 问题[(级别, 说明)], 存档数)；纯计算，不打印。"""
-    idx, bad, same = card_index(), [], 0
+    idx, sig, bad, same = card_index(), signal_index(), [], 0
     arcs = archives()
     for arc in arcs:
         if arc['date'] and arc['name_date'] and arc['date'] != arc['name_date']:
@@ -97,7 +116,17 @@ def scan():
                        f"政策日期 {arc['date']} 不一致——同一份文件说了两个日子")
         sec = match(arc, idx)
         if not sec:
-            bad.append(f"{arc['file']}：按文号与标题都没找到对应卡片小节——"
+            # 卡片里没有，再看是不是服务于信号条目：**同日** + 标题高度相近。
+            # 为什么允许相似度而不用「逐字包含」：信号标题是编辑句（会加「发布」「首提」
+            # 这类动词），文件标题是机关公文名，逐字包含几乎必然落空。限定同日，
+            # 一天内的信号条目只有个位数，猜错代价可控；宁可漏匹配（报「没找到」）也不跨日猜。
+            t = norm(arc['title'])
+            hit = [s for s in sig if s['date'] == arc['date']
+                   and difflib.SequenceMatcher(None, s['key'], t).ratio() >= 0.55]
+            if len(hit) == 1:
+                same += 1
+                continue
+            bad.append(f"{arc['file']}：按文号与标题都没找到对应卡片小节或信号条目——"
                        f"卡片漏了这条政策，或标题被改过")
             continue
         if not arc['date'] or not sec['date']:
@@ -112,24 +141,25 @@ def scan():
 
 
 def misplaced():
-    """目录与「存档级别」对不对得上：`articles` 只该放原文，`reports` 只该放报道。
+    """`raw/articles/` 里不该有「报道」：目录名是一手承诺，级别字段是自我声明。
 
-    为什么要有这一条（2026-10-26）：分目录之前，58 份里有 26 份不是文件本身，
+    为什么要有这一条（2026-10-26）：分家之前 58 份里 26 份不是文件本身，
     而每份 frontmatter 早就写着 `存档级别: 官方报道`——**字段是对的，只是没人读**。
-    光加目录不加判据，下一个人照样能把一份记者稿塞回 `articles`。
-    判据只认「自己声明的级别」与「所在目录」是否一致，不判断级别本身对不对
+    现在的口径更硬：报道类根本不进 `raw/`（按内容归政策卡片或政策信号），
+    所以「`articles` 里出现非原文」就是要报的。光靠 `fetch` 拦不住手工拷进来的那份。
+
+    判据只认「自己声明的级别」，不判断级别本身对不对
     （那是填链接那一步的事，见 `domain/sources.py` 的 `level()`）。
     """
     out = []
-    for d, want in ((ARTICLE_DIR, ORIGIN), (REPORT_DIR, MEDIA)):
-        if not d.exists():
-            continue
-        for p in sorted(d.glob('*.md')):
-            m = LEVEL.search(read(p, ''))
-            lv = m.group(1).strip() if m else ''
-            if lv and lv != want:
-                out.append(f'{d.name}/{p.name}：自称「{lv}」，却放在 {d.name}/——'
-                           f'{d.name}/ 只该放「{want}」')
+    if not ARTICLE_DIR.exists():
+        return out
+    for p in sorted(ARTICLE_DIR.glob('*.md')):
+        m = LEVEL.search(read(p, ''))
+        lv = m.group(1).strip() if m else ''
+        if lv and lv != ORIGIN:
+            out.append(f'articles/{p.name}：自称「{lv}」，不是文件本身——'
+                       f'`articles/` 只该放「{ORIGIN}」；报道类归政策卡片或政策信号，不进 raw/')
     return out
 
 
@@ -141,15 +171,14 @@ def run(argv=None):
 
     same, bad, n = scan()
     bad += misplaced()
-    n_rep = len(list(REPORT_DIR.glob('*.md'))) if REPORT_DIR.exists() else 0
     if not n and not bad:
-        msg = f'一手存档 0 份（raw/articles 为空或不存在），报道区 {n_rep} 份，本项无结论'
+        msg = '一手存档 0 份（raw/articles 为空或不存在），本项无结论'
         return Result(Verdict.PASS, msg, [msg])
     lines = ['=== 卡片 × 一手存档 ===',
-             f'原文 {n} 份／报道 {n_rep} 份：日期一致 {same}，问题 {len(bad)}']
+             f'原文 {n} 份：日期一致 {same}，问题 {len(bad)}']
     lines += [f'  · {why}' for why in bad]
     if not bad:
         lines.append('（只核「两份落盘物是否自洽」；两边一起错时本项查不出，外部核对仍在任务台账）')
     mark = '✅' if not bad else '⚠️'
-    summary = f'一手存档 {n} 份（报道区 {n_rep}）：日期一致 {same} · 问题 {len(bad)} {mark}'
+    summary = f'一手存档 {n} 份：日期一致 {same} · 问题 {len(bad)} {mark}'
     return Result(Verdict.PASS, summary, lines)

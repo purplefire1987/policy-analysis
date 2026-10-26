@@ -4,7 +4,8 @@
 
 ## 一、位置与部署
 
-- **库**：`/Users/Mr_Zhou/Documents/知识库/资料库`（Obsidian vault），`raw/` 只读，唯 `raw/articles/`（原文）与 `raw/reports/`（官方报道）可由 `fetch` 新增（2026-10-26 分家）。分目录判据＝`domain/sources.py` 的 `level()`（原文／官方报道／非一手），`check_archives.misplaced()` 核「自称级别 vs 所在目录」。起因：58 份里 26 份不是文件本身，而 frontmatter 早写着「官方报道」，只是无人读这个字段。
+- **库**：`/Users/Mr_Zhou/Documents/知识库/资料库`（Obsidian vault），`raw/` 只读，唯 `raw/articles/` 可由 `fetch` 新增，**只收文件本身（一手原文）**。判据＝`domain/sources.py` 的 `level()`，非「原文」级 `fetch` 一律 `nofirst` 不写盘、`stored_urls()` 只扫这一处；`check_archives.misplaced()` 单向核「`articles/` 里出现非原文」。起因：58 份里 26 份不是文件本身，而 frontmatter 早写着「官方报道」，只是无人读这个字段。
+- **报道的去处由「内容」定，不由「来源级别」定**：有正式文件 / 文件已存在 → 卡片补链；无文号而有方向性表述 → 政策信号页条目。**没有第三种归宿，所以不需要第二级目录**（原 `raw/reports/` 于 2026-10-26 当日撤销，30 份删前已逐份核对在 `归档/备份/raw-articles-分流前-20261026/`）。教训：**「别装成文件」不等于「换个柜子」**——分目录只是让目录名不撒谎，代价是多一个只进不出的层，检索时还得记得去那儿翻。入口拒收（`nofirst`）比事后分流少一步，也更难漂移。
 - **工具**：`/Users/Mr_Zhou/WorkBuddy/2026-09-23-07-58-53/tools/`，入口 `run.py`（只解析参数→路由→聚合退出码），实现在 `pkb/`。
 - **git**：只在工作区 init，**资料库未纳入版本控制**；`归档/` 在 `.gitignore`（含 .obsidian 二进制）。远程 `git@github.com:purplefire1987/policy-analysis.git`（私有），SSH `~/.ssh/id_ed25519`（无口令，供自动化推送）。**走 SSH 不走 MCP**：connector 令牌建库 403，`push_files` 只能落成单提交且要过一遍 445 KB 上下文。
 - **工作区顶层**：`README.md`、`tools/`、`automation-prompts/`、`归档/`（+ `.github`、`.gitignore`、`.workbuddy`）。`automation-prompts/` 顶层＝三个自动化的**现行**提示词，`旧版/` 放历史；`归档/备份/` 是 4 份 `政策库备份-*`——**资料库无 git，这是唯一历史兜底，别删**。**归档只读。**

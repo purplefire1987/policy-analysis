@@ -30,14 +30,11 @@ ANALYSIS_DIR = VAULT / 'wiki' / '分析'
 OVERVIEW_DIR = VAULT / 'wiki' / '总览'
 TEMPLATE_DIR = VAULT / 'templates'
 
-# 一手存档区：只增不改（`run.py fetch` 唯一写入点，勘误另存新文件）
+# 一手存档区：只增不改（`run.py fetch` 唯一写入点，勘误另存新文件）。
+# **只有「文件本身」能进这里**（2026-10-26 定）：官方报道与解读不进 raw/，
+# 按内容归政策卡片或政策信号。判据住 domain（`domain/sources.py` 的 level）。
 RAW_DIR = VAULT / 'raw'
 ARTICLE_DIR = RAW_DIR / 'articles'
-# 报道区（2026-10-26）：官方报道/解读/抓错页从 articles 移到这里。
-# 为什么分开：`articles` 这个名字是「一手」的承诺——一份央视记者稿躺在里面，
-# 两年后拿它当一手用，就是 2026-10-26 之前那 29% 的状态。
-# 目录分工写在这里，判据住 domain（`domain/sources.py` 的 level）。
-REPORT_DIR = RAW_DIR / 'reports'
 # 抓取过程的临时落点：原页与附件缓存，供抽取失败时人工复核；不是库内容
 CACHE_DIR = WORKSPACE / '.cache' / 'fetch'
 

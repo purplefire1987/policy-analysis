@@ -33,25 +33,25 @@ def archive(date, title, no='商发〔2026〕1号', file_date=None):
             f'{fd}_商务部_{title}.md')
 
 
-def run(cards=None, arcs=None, reps=None):
-    """搭一个最小库跑一次；cards 是 {文件名: 内容}，arcs/reps 是 [(内容, 文件名)]。
+def run(cards=None, arcs=None, sigs=None):
+    """搭一个最小库跑一次；cards 是 {文件名: 内容}，arcs / sigs 是 [(内容, 文件名)]。
 
-    **三个目录都要 mock**（2026-10-26）：`run()` 还要读 `raw/reports/` 判断
-    「级别与目录是否一致」，漏 mock 就会去读真实库——测试于是变成「看今天库里几份」，
-    本地绿、CI 空库红，或者反过来。
+    **三个目录都要 mock**（2026-10-26 晚）：`run()` 除了卡片与存档，还要读
+    `wiki/政策信号/`（一手存档也可能服务于信号条目，如央行汇率立场文件）。
+    漏 mock 就会去读真实库——测试于是变成「看今天库里几份」，本地绿、CI 空库红。
     """
     with tempfile.TemporaryDirectory() as d:
-        cd, ad, rd = Path(d) / '卡片', Path(d) / '存档', Path(d) / '报道'
+        cd, ad, sd = Path(d) / '卡片', Path(d) / '存档', Path(d) / '信号'
         cd.mkdir()
         for name, text in (cards or {}).items():
             (cd / name).write_text(text, encoding='utf-8')
-        for base, items in ((ad, arcs), (rd, reps)):
+        for base, items in ((ad, arcs), (sd, sigs)):
             base.mkdir()
             for text, name in (items or []):
                 (base / name).write_text(text, encoding='utf-8')
         with mock.patch.object(A, 'CARD_DIR', cd), \
                 mock.patch.object(A, 'ARTICLE_DIR', ad), \
-                mock.patch.object(A, 'REPORT_DIR', rd):
+                mock.patch.object(A, 'SIGNAL_DIR', sd):
             return A.run([])
 
 
@@ -85,7 +85,7 @@ class Test日期核对(unittest.TestCase):
     def test_找不到对应小节要报(self):
         r = run({'政策卡片-消费.md': card('2026-10-09', '关于促进房车消费的若干措施')},
                 [archive('2026-10-09', '完全不相干的另一份文件名称', no='商发〔2026〕9号')])
-        self.assertTrue(any('没找到对应卡片小节' in x for x in r.lines), r.lines)
+        self.assertTrue(any('没找到对应卡片小节或信号条目' in x for x in r.lines), r.lines)
 
     def test_按文号匹配不依赖标题(self):
         """标题被改过但文号还在——仍然该认出来，并只报日期差。"""
@@ -98,7 +98,7 @@ class Test日期核对(unittest.TestCase):
         two = card('2026-10-09', '甲政策名称足够长') + '\n' + card('2026-10-10', '乙政策名称足够长')
         r = run({'政策卡片-消费.md': two},
                 [archive('2026-10-09', '完全不相干的另一份文件名称', no='商发〔2026〕9号')])
-        self.assertTrue(any('没找到对应卡片小节' in x for x in r.lines), r.lines)
+        self.assertTrue(any('没找到对应卡片小节或信号条目' in x for x in r.lines), r.lines)
 
     def test_空存档目录不给结论(self):
         r = run({'政策卡片-消费.md': card('2026-10-09', '关于促进房车消费的若干措施')}, [])
@@ -113,42 +113,60 @@ class Test日期核对(unittest.TestCase):
 
 
 class Test目录归属(unittest.TestCase):
-    """`articles` 只放原文、`reports` 只放报道——判「自称的级别」与「所在目录」是否一致。
+    """`raw/articles/` 只放文件本身——判「自称的级别」够不够格进这个目录。
 
-    为什么要有：分目录之前 58 份里 26 份不是文件本身，而每份 frontmatter 都写着
-    `存档级别: 官方报道`。字段是对的，只是没人读。光加目录不加判据，下一个人
-    照样能把记者稿塞回 `articles`。这两条钉住「塞回去会报」。
+    为什么要有：分家之前 58 份里 26 份不是文件本身，而每份 frontmatter 都写着
+    `存档级别: 官方报道`。字段是对的，只是没人读。现在的口径更硬：报道类根本不进
+    `raw/`（按内容归政策卡片或政策信号），所以「自称不是原文却躺在 articles」就该报。
     """
 
     def test_报道放进了原文目录要报(self):
-        r = run({'政策卡片-消费.md': card('2026-10-09', '关于促进房车消费的若干措施')},
-                [archive('2026-10-09', '关于促进房车消费的若干措施')])
-        self.assertIn('问题 0', r.summary)
-
         text, name = archive('2026-10-09', '某会议报道', no='无')
         text = text.replace('文号: 无', '文号: 无\n存档级别: 官方报道')
-        r2 = run({'政策卡片-消费.md': card('2026-10-09', '某会议报道', no='无')},
-                 [(text, name)])
-        self.assertTrue([x for x in r2.lines if '只该放' in x],
+        r = run({'政策卡片-消费.md': card('2026-10-09', '某会议报道', no='无')},
+                [(text, name)])
+        self.assertTrue([x for x in r.lines if '只该放' in x],
                         '报道放进 articles/ 必须点名「只该放」')
 
-    def test_原文放进了报道目录要报(self):
-        text, name = archive('2026-10-09', '关于促进房车消费的若干措施')
-        text = text.replace('文号: 商发〔2026〕1号', '文号: 商发〔2026〕1号\n存档级别: 原文')
-        r = run({'政策卡片-消费.md': card('2026-10-09', '关于促进房车消费的若干措施')},
-                reps=[(text, name)])
-        self.assertTrue([x for x in r.lines if '只该放' in x],
-                        '原文放进 reports/ 必须点名「只该放」')
-        self.assertIn('报道区 1', r.summary)
+    def test_非一手也报(self):
+        text, name = archive('2026-10-09', '某门户转述', no='无')
+        text = text.replace('文号: 无', '文号: 无\n存档级别: 非一手')
+        r = run({'政策卡片-消费.md': card('2026-10-09', '某门户转述', no='无')},
+                [(text, name)])
+        self.assertTrue([x for x in r.lines if '只该放' in x])
 
     def test_没有级别字段不报(self):
         r = run({'政策卡片-消费.md': card('2026-10-09', '关于促进房车消费的若干措施')},
                 [archive('2026-10-09', '关于促进房车消费的若干措施')])
         self.assertIn('问题 0', r.summary)
 
-    def test_摘要写出报道区份数(self):
-        text, name = archive('2026-10-09', '某会议报道', no='无')
-        text = text.replace('文号: 无', '文号: 无\n存档级别: 官方报道')
-        r = run({'政策卡片-消费.md': card('2026-10-09', '某会议报道', no='无')},
-                reps=[(text, name)])
-        self.assertIn('报道区 1', r.summary)
+    def test_摘要只写原文份数(self):
+        r = run({'政策卡片-消费.md': card('2026-10-09', '关于促进房车消费的若干措施')},
+                [archive('2026-10-09', '关于促进房车消费的若干措施')])
+        self.assertIn('一手存档 1 份', r.summary)
+        self.assertNotIn('报道区', r.summary)
+
+
+class Test存档可服务信号(unittest.TestCase):
+    """一手存档不一定对应政策卡片：按「信号≠政策」口径转记后，有些文件服务于信号条目。
+
+    2026-10-26 实证：央行《关于人民币汇率的政策立场》是一手文本、进了 `raw/articles/`，
+    但条目在政策信号页。只认卡片就会把它报成「卡片漏了」，而它并不缺。
+    """
+
+    def test_同日且标题相近视为已归属(self):
+        body = ('---\n类型: 政策信号汇总\n---\n\n'
+                '### 2026-10-08 · 中国人民银行发布《关于人民币汇率的政策立场》：首次系统阐述\n')
+        r = run({'政策卡片-消费.md': card('2026-10-09', '关于促进房车消费的若干措施')},
+                [archive('2026-10-08', '中国人民银行关于人民币汇率的政策立场', no='无')],
+                sigs=[(body, '政策信号-金融强国.md')])
+        self.assertIn('问题 0', r.summary)
+
+    def test_跨日不认(self):
+        """同日才算——跨日靠相似度猜，等于把两条不相干的事绑在一起。"""
+        body = ('---\n类型: 政策信号汇总\n---\n\n'
+                '### 2026-10-07 · 中国人民银行关于人民币汇率的政策立场\n')
+        r = run({'政策卡片-消费.md': card('2026-10-09', '关于促进房车消费的若干措施')},
+                [archive('2026-10-08', '中国人民银行关于人民币汇率的政策立场', no='无')],
+                sigs=[(body, '政策信号-金融强国.md')])
+        self.assertTrue(any('没找到对应卡片小节或信号条目' in x for x in r.lines))
