@@ -146,6 +146,22 @@ class TestWeb(unittest.TestCase):
         # 清单类附件转成的表格正文：ASCII 标点占大半，更不能判成乱码
         self.assertFalse(web.looks_binary('| 序号 | 编码 | 数量 |\n|---|---|---|\n| 1 | 8501.10 | 12 |'))
 
+    def test_压缩流要解开(self):
+        """实物：光明网不管客户端有没有声明 Accept-Encoding 都回 gzip。
+        取回不解压，`decode(errors='ignore')` 就把它拼成「看着像字」的乱码。"""
+        import gzip
+        page = '<html><body><p>产业基础能力提升“十五五”规划发布</p></body></html>'
+        packed = gzip.compress(page.encode('utf-8'))
+        self.assertEqual(web.inflate(packed).decode('utf-8'), page)
+        self.assertFalse(web.looks_binary(web.decode(web.inflate(packed))))
+
+    def test_非压缩内容原样返回(self):
+        """解压是兜底不是主路：解不开就原样交出，让 looks_binary 判——判据只留一处。"""
+        self.assertEqual(web.inflate(b'<html>plain</html>'), b'<html>plain</html>')
+        self.assertEqual(web.inflate(b''), b'')
+        # 半截 gzip（2 字节魔数之后是垃圾）也不能抛给调用方
+        self.assertEqual(web.inflate(b'\x1f\x8b\x00\x01garbage'), b'\x1f\x8b\x00\x01garbage')
+
 
 class TestArchive(unittest.TestCase):
     """端到端：写一份、再跑一次必须是「已存档跳过」。"""

@@ -1,20 +1,28 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""判断台账校验：编号能不能回原文、到期的判断结算了没有。
+"""判断台账校验：编号能不能回原文、到期的判断结算了没有、裁判是不是名单内的。
 
 为什么独立成一项检查：判断是**跨周对象**——卡片「影响」列引用它、下一期第七节复盘它、
 Brier 记分要跨十几周数它。此前它只活在某一周的正文里，「这条到期没」只能靠人记得。
 台账是它的家；本检查只做一件事：**保证台账不自说自话**——每一行都要在对应周观点的
 第八节里找到原文，第八节出现过的编号都要在台账里有户头，卡片引用的编号同理。
 
+裁判一节的由来（2026-10-26）：台账写着「裁判只能取深读方法手册第三节列过的」，
+而这句话此前**没有任何脚本管**。查第一条真数据就不对——J2026-W43-2 的裁判写
+「财政部预算公开」，手册里那类叫「预算与决算公开」。名字对不上名单，等于那条判断
+在制度上「无裁判可用」，而台账看起来完全正常。**声明了取值范围就要有判据，
+否则那句话只是排版。**
+
 退出语义：
   FAIL = 台账与正文对不上（重号／列数不对／编号格式错／状态越界／判定日解析不了／
-         第八节查无此号／第八节有而台账没登记／卡片引用了查无此号）
+         第八节查无此号／第八节有而台账没登记／卡片引用了查无此号／
+         裁判不在手册第三节名单内／裁判与第八节原文不一致）
   PASS = 结构没问题；「到期未结算」「可回填」只列明细——那是欠账，不是结构错，
          欠账一旦阻断退出码，就会淹没真问题（与 check_views 同一分工）。
 """
 import argparse
 import datetime
+import difflib
 import re
 
 from pkb.core import (CARD_DIR, JUDGE_LEDGER, OVERVIEW_DIR, WEEKLY_DIR,
@@ -28,12 +36,101 @@ REF_RE = re.compile(r'J\d{4}-W\d{2}-\d+')
 PENDING_RE = re.compile(r'待\s*W(\d{2})\s*周观点登记')
 
 COLS = 7          # 编号｜判断｜指标与阈值｜裁判｜判定日｜状态｜结算依据
-COL_DUE, COL_STATE, COL_BASIS = 4, 5, 6
+COL_REF, COL_DUE, COL_STATE, COL_BASIS = 3, 4, 5, 6
+
+# 裁判名单的唯一来源。**不在这里再抄一份**——抄一份就多一份没人校验的副本，
+# 而这份名单的性质是「会随领域扩张加长」（10-26 刚加过三类），最怕两份不同步。
+HANDBOOK = OVERVIEW_DIR / '深读方法手册.md'
+REF_SECTION = '三、独立裁判清单'
+
 
 
 def ledger_rows(text):
     """只认「四、台账」那一节的表：正文里别的表（状态说明）不是台账。"""
     return table_rows(md_section_lines(text, '四、台账'))
+
+
+def _table(body):
+    """(表头, 数据行)。`table_rows` 会把表头当噪声丢掉，而这里要按列名定位，所以自己取。"""
+    raw = [l.strip() for l in body if l.strip().startswith('|')]
+    if len(raw) < 2:
+        return [], []
+
+    def cells(s):
+        return [c.strip() for c in s.strip().strip('|').split('|')]
+
+    data = [cells(r) for r in raw[2:] if not set(''.join(cells(r))) <= set('-: ')]
+    return cells(raw[0]), data
+
+
+def allowed_referees(text):
+    """手册第三节那张表的第一列 = 允许的裁判名单。
+
+    名单从文档现读、不在代码里另存一份：它**会加长**（10-26 刚补了官方统计、
+    预算与决算公开、监管文件库三类），两份不同步时最难查——代码那份对、文档那份旧，
+    或者反过来，谁都不报错。
+    """
+    _head, rows = _table(md_section_lines(text, REF_SECTION))
+    return [r[0].strip().strip('*').strip() for r in rows if r and r[0].strip('*').strip()]
+
+
+def referee_name(cell):
+    """裁判列 → 名单里的名字。括号里是「取数处」，只作说明，不参与比对。
+
+    `预算与决算公开（财政部预算司…）` → `预算与决算公开`；`海关月度数据(…)` 同理。
+    """
+    return re.split(r'[（(]', cell or '', maxsplit=1)[0].strip().strip('*').strip()
+
+
+def week_referees():
+    """{编号: (周观点文件名, 裁判格)}，只收 JUDGE_SINCE 起、且真有第八节的那几期。
+
+    第八节之前的周观点（W39–W42）没有这张表——不是缺漏，是那一版还没有第八节，
+    所以「找不到裁判」不能报错，得跳过。
+    """
+    out = {}
+    if not WEEKLY_DIR.exists():
+        return out
+    for p in sorted(WEEKLY_DIR.glob('周观点-*.md')):
+        if p.stem.replace('周观点-', '') < JUDGE_SINCE:
+            continue
+        head, rows = _table(md_section_lines(read(p), '八、'))
+        if not head or not rows:
+            continue
+        col = next((i for i, h in enumerate(head) if '裁判' in h), COL_REF)
+        for cells in rows:
+            if cells and ID_RE.match(cells[0]) and len(cells) > col:
+                out[cells[0]] = (p.name, cells[col])
+    return out
+
+
+def check_referees(rows, allowed, weeks):
+    """裁判必须取自名单，且与第八节原文逐字一致。返回错误列表（纯函数）。
+
+    为什么要「逐字一致」这一条：台账自己写着「原样抄进下表——改一个字，脚本就对不上
+    原文」，而此前只比编号在不在。字号对不上时，同一批事实就有了两个版本，
+    报表里引哪一个都说得通。**声明了要逐字一致，就让脚本去看。**
+    """
+    if not allowed:
+        return [f'手册第三节（{REF_SECTION}）读不出裁判名单——判据失效，不是台账没问题']
+    errors, known = [], set(allowed)
+    for cells in rows:
+        if len(cells) < COLS:
+            continue
+        jid, cell = cells[0], cells[COL_REF]
+        name = referee_name(cell)
+        if not name:
+            errors.append(f'{jid} 裁判列是空的——没有裁判的判断不该进第八节')
+            continue
+        if name not in known:
+            near = difflib.get_close_matches(name, allowed, n=1, cutoff=0.5)
+            hint = f'，最接近「{near[0]}」' if near else ''
+            errors.append(f'{jid} 裁判「{name}」不在手册第三节名单内{hint}')
+        src = weeks.get(jid)
+        if src and src[1].strip() != cell.strip():
+            errors.append(f'{jid} 裁判与 {src[0]} 第八节不一致：'
+                          f'台账「{cell}」／原文「{src[1]}」')
+    return errors
 
 
 def audit(rows, lookup):
@@ -130,7 +227,7 @@ def _render(items, errors, due, refs, pend, today):
     out = [f'  ✗  {e}' for e in errors]
     out += [f'  !  {j} 判定日已过（今天 {today}）仍未结算' for j in due]
     if not errors:
-        out.append(f'  OK  {len(items)} 条判断：台账与第八节逐条对得上')
+        out.append(f'  OK  {len(items)} 条判断：台账与第八节逐条对得上，裁判均在名单内')
     known = sorted(set(refs) & {it['id'] for it in items})
     if known:
         out.append(f'  ·  {len(known)} 个编号已被卡片引用（影响档位挂得住）')
@@ -164,11 +261,15 @@ def run(argv=None):
     missing = sorted(set(filed) - {it['id'] for it in items})
     errors += [f'{j} 在 {filed[j]} 里出现过但台账没登记——台账在漏行' for j in missing]
 
+    allowed = allowed_referees(read(HANDBOOK, ''))
+    errors += check_referees(rows, allowed, week_referees())
+
     settled = sum(1 for it in items if it['state'] != JUDGE_PENDING)
     summary = (f'判断 {len(items)} 条（待判 {len(items) - settled}／已结算 {settled}）'
                f'· 到期未结算 {len(due)} · 未登记 {len(missing)}'
                f' · 卡片引用 {len(refs)} 号'
                + (f'（查无 {len(unknown)}）' if unknown else '')
+               + f' · 裁判名单 {len(allowed)} 类'
                + f' · 待回填 {len(pend)} 处')
     verdict = Verdict.FAIL if errors else Verdict.PASS
     return Result(verdict, summary + ('' if not errors else f'  ✗ {len(errors)} 处'),

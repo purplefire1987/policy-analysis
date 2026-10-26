@@ -58,44 +58,94 @@ def _num(s):
 
 
 def _constants(t):
-    """AGENTS 里「唯一允许写数字」的那句（结构常量）——它是全库唯一可写死数字的地方。"""
+    """AGENTS 里「唯一允许写数字」的那句（结构常量）括号里的那串。"""
     m = re.search(r'结构常量[^\n（]{0,6}（([^）]+)）', t)
     return m.group(1) if m else ''
 
 
-def check_structure_numbers(docs):
-    """结构常量必须等于实物：卡数、链数、周观点节数、信号字段数。
+def actual_facts():
+    """结构常量的实物：一个事实一个来源，一律现数，没有一个是手填的。
 
-    2026-10-26 审计发现这句写着「7 节」而周观点早已是八节——**它偏偏是全库
-    唯一被允许写死数字的一句话**，写错没有人发现，因为没人拿它跟模板比。
-    所以判据取实物：卡片目录 glob、链目录 glob、模板的 `##` 数、`REQUIRED_FIELDS` 长度。
+    `words` 借 `checks/structure` 的解析——同一张表解析两次就是两份会漂的代码。
     """
-    t = docs.get('AGENTS', '')
-    seg = _constants(t)
-    if not seg:
-        err('AGENTS', '找不到「结构常量（…）」那段，本项无法校验——不静默放过')
-        return
-    n_fields = len(re.findall(r'^- \*\*', lib_read(SIGNAL_TEMPLATE, ''), re.M))
-    actual = [
-        (r'(\d+)\s*张产业卡', len(list(CARD_DIR.glob('*.md'))), '张产业卡'),
-        (r'(\d+)\s*条索引链', len(list(CHAIN_DIR.glob('*.md'))), '条索引链'),
-        (r'([\d一二三四五六七八九十]+)\s*节', 
-         len(re.findall(r'^##\s+', lib_read(WEEK_TEMPLATE, ''), re.M)), '周观点节数'),
-        (r'([\d一二三四五六七八九十]+)\s*字段', n_fields, '信号字段'),
-    ]
-    bad = False
-    for pat, real, label in actual:
-        m = re.search(pat, seg)
-        if not m:
+    from pkb.checks import structure as _structure      # 局部导入：避免包初始化期互引
+    return {
+        'cards': len(list(CARD_DIR.glob('*.md'))),
+        'chains': len(list(CHAIN_DIR.glob('*.md'))),
+        'words': len(_structure.load_theme_words()[1]),
+        'sections': len(re.findall(r'^##\s+', lib_read(WEEK_TEMPLATE, ''), re.M)),
+        'fields': len(re.findall(r'^- \*\*', lib_read(SIGNAL_TEMPLATE, ''), re.M)),
+    }
+
+
+# 一个事实一行：(键, 认它的写法, 单位)。写法要窄——**宁可漏认，不可错认**。
+# 「节」故意不在这里：`政策链三节`、`六节历史归档` 说的都是别的东西（前者是链的正文三节，
+# 后者是 W39–41 的历史事实），一条规则不该让这两种正确写法看起来像报错。
+# 节数只在 AGENTS「结构常量」那一句里查——那里括号内的「八节」不会有歧义。
+FACTS = (
+    ('cards', (r'(\d+)\s*张(?:产业卡|政策卡片|卡)',), '张产业卡'),
+    ('chains', (r'(\d+)\s*条(?:索引链|链)',), '条索引链'),
+    ('words', (r'(\d+)\s*个受控词',), '个受控词'),
+    ('fields', (r'([\d一二三四五六七八九十]+)\s*个?字段',), '个信号字段'),
+)
+
+# 参与比对的文件。**台账与报告不在此列**：它们的数字是「当时」的快照，
+# 改了等于篡改记录（体检报告里那些「138 张卡／60 个词」就该原样留着）。
+SPEC_DOCS = ('AGENTS', 'index', '政策速览', '专家定义', '专家包README', 'SKILL')
+
+
+def scan_counts(text):
+    """文本里所有「结构常量」写法：[(行号, 原文, 键, 值)]。纯函数，便于直接喂字符串测。"""
+    hits = []
+    for lineno, line in enumerate(text.split('\n'), 1):
+        for key, pats, _label in FACTS:
+            for pat in pats:
+                for m in re.finditer(pat, line):
+                    val = _num(m.group(1))
+                    if val is not None:
+                        hits.append((lineno, m.group(0), key, val))
+    return hits
+
+
+def check_structure_numbers(docs):
+    """结构常量与实物：**每一份规则类文档里的每一处**都要对得上。
+
+    为什么不再只查 AGENTS 那一句（2026-10-26 改）：那句话是唯一「被允许写死数字」的，
+    这没错；但同一批数字散在 AGENTS、index、政策速览 与专家定义四份文档里，
+    而旧实现只比对 AGENTS 那一句。于是**结构一改，其余各处的数字静默过期**——
+    它们恰恰是采集 agent 每次都会读的。现在改成一张「事实 → 实物」表扫全部规则类文档：
+    改结构时跑一次 `check --only docs`，报出来的每一行都是待改清单。
+    （具体几处不写在注释里，看输出——写死一个「9 处」，改完文档它就过期了。）
+    """
+    facts = actual_facts()
+    seen, bad = 0, False
+    for name in SPEC_DOCS:
+        t = docs.get(name, '')
+        if not t:
             continue
-        got = _num(m.group(1))
-        if got is not None and got != real:
-            bad = True
-            err('AGENTS', f'结构常量写「{m.group(0)}」，实际 {label} {real}')
-    if not bad:
-        ok('结构常量与实物一致（' + '／'.join(f'{lbl} {n}' for _p, n, lbl in actual) + '）')
-    if not any(re.search(p, seg) for p, _n, _l in actual):
-        err('AGENTS', '结构常量那段一条数字也没读出来——判据失效，不是文档没问题')
+        for lineno, text, key, val in scan_counts(t):
+            seen += 1
+            if val != facts[key]:
+                bad = True
+                unit = next(u for k, _p, u in FACTS if k == key)
+                err(name, f'第 {lineno} 行写「{text}」，实际 {facts[key]} {unit}'
+                          f'——结构改了就同步改这里，别让它自己过期')
+    if not seen:
+        err('AGENTS', '一份文档里也没读出结构数字——判据失效，不是文档没问题')
+    elif not bad:
+        ok('结构数字：' + str(seen) + ' 处写法全部等于实物（'
+           + '／'.join(f'{u} {facts[k]}' for k, _p, u in FACTS) + '）')
+
+    # 「八节」单独查：只认 AGENTS「结构常量（…）」括号里的那一个，其余写法含义不同。
+    seg = _constants(docs.get('AGENTS', ''))
+    if not seg:
+        err('AGENTS', '找不到「结构常量（…）」那段，节数无法校验——不静默放过')
+        return
+    m = re.search(r'([\d一二三四五六七八九十]+)\s*节', seg)
+    if not m:
+        err('AGENTS', '「结构常量」括号里没读出节数——判据失效，不是文档没问题')
+    elif _num(m.group(1)) != facts['sections']:
+        err('AGENTS', f'结构常量写「{m.group(0)}」，实际周观点 {facts["sections"]} 节')
 
 
 def check_no_hardcoded_count(docs):

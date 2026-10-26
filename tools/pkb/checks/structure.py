@@ -290,18 +290,17 @@ def check_links(names):
                 add(issues, '6-断链', rel, f'[[{target}]] 无对应文件')
 
 
-def check_stats(n_cards, n_secs):
-    """index.md 的统计数字与实际是否一致。
+def check_stats(n_secs):
+    """index.md 里的**政策数**与实际是否一致（卡数不在这里查，见下）。
 
-    卡数是结构事实，写错即报错（新增/改名卡时必须同步）。
     政策数每天随采集变化，属快照，只提示不阻断——根治办法是别在索引里写死政策数。
+    卡数曾在这里也查一遍，与 `docs` 的 `check_structure_numbers` 重复：同一件事
+    两处实现、两句文案，结构一变还要改两处。2026-10-26 只留 docs 那一处——
+    它扫的是**全部规则类文档**，比只扫 index 更全。
     """
     idx = INDEX
     if idx.exists():
         t = idx.read_text(encoding='utf-8')
-        m = re.search(r'共\s*(\d+)\s*张产业卡', t)
-        if m and int(m.group(1)) != n_cards:
-            add(issues, '8-统计', 'index.md', f'「共 {m.group(1)} 张产业卡」，实际 {n_cards} 张')
         for m in re.finditer(r'覆盖\s*(\d+)\s*项政策', t):
             if int(m.group(1)) != n_secs:
                 add(warns, '8-统计', 'index.md',
@@ -424,7 +423,7 @@ def _collect():
     check_chains(cards, theme_map)
     check_theme_table(cards, theme_map, theme_words)
     check_links(load_all_md_names())
-    check_stats(len(cards), n_secs)
+    check_stats(n_secs)
     return cards, n_secs, theme_words
 
 

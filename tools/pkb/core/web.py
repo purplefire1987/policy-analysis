@@ -12,6 +12,9 @@
    整页切会把导航条混进正文。容器命中就只切容器，切出来太短才退回全文。
 3. **附件扩展名**：商务部附件是 `download?fileUrl=…&fileName=xxx.docx`，
    按路径取扩展名会得到 `download`，于是「附件转文本」永远跳过——静默失效。
+4. **压缩**（2026-10-26 补）：光明网那类站不管客户端有没有声明 Accept-Encoding 都回 gzip。
+   不带 `--compressed` 取回的就是压缩流，`decode` 之后成了「看着像字」的乱码。
+   `inflate()` 是第二道，`looks_binary()` 是第三道——**每道都只负责自己那一层**。
 """
 import html as htmllib
 import re
@@ -64,27 +67,46 @@ def _once(url, timeout, insecure):
     if not shutil.which('curl'):
         return _fetch_urllib(url, timeout)
     flags = ['-k'] if insecure else []
-    r = subprocess.run(['curl', '-sL', '--max-time', str(timeout), '-A', UA] + flags +
+    # `--compressed` 不是优化，是**必需**：有的站（光明网 2026-10-26 实测）不管客户端
+    # 有没有声明 Accept-Encoding 都回 gzip。少了它，取回的是压缩流，`decode(errors='ignore')`
+    # 会把它拼成一串「看着像字」的东西——长度过门槛、存档写「完整」，实际是二进制。
+    r = subprocess.run(['curl', '-sL', '--compressed', '--max-time', str(timeout), '-A', UA] + flags +
                        [url, '-w', '%{http_code}'], capture_output=True)
     digits = re.search(rb'(\d{3})\s*$', r.stdout)      # -w 把状态码追加在体后面
     if not digits:
         return 0, b'', bool(flags)
     status = int(digits.group(1))
-    payload = r.stdout[:digits.start()].rstrip(b'\n')
+    payload = inflate(r.stdout[:digits.start()].rstrip(b'\n'))
     if status != 200:
         payload = b''                                  # 404 的页面也返回两万字节错误页
     return status, payload, bool(flags)
 
 
 def _fetch_urllib(url, timeout):
-    """没有 curl 时的退路：够用，但不带证书降级。"""
+    """没有 curl 时的退路：够用，但不带证书降级，也不替我们解压缩。"""
     import urllib.request
     try:
         req = urllib.request.Request(url, headers={'User-Agent': UA})
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return resp.status, resp.read(), False
+            return resp.status, inflate(resp.read()), False
     except Exception:
         return 0, b'', False
+
+
+def inflate(body, limit=8 << 20):
+    """gzip 兜底：`curl --compressed` 已经解过时这里是空操作。
+
+    为什么要单独一层：解压失败不能抛给调用方——那会把「压缩流解错」变成「抓取失败」，
+    而两者的处置完全不同（前者换参数重取，后者多半是链接写错）。解不开就原样返回，
+    交给 `looks_binary()` 判，判据只留一处。
+    """
+    if body[:2] != b'\x1f\x8b':
+        return body
+    try:
+        import gzip
+        return gzip.decompress(body)[:limit]
+    except Exception:
+        return body
 
 
 def decode(body):

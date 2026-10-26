@@ -15,6 +15,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from pkb.checks import judgments as J              # noqa: E402
 from pkb.checks.judgments import audit, ledger_rows, overdue  # noqa: E402
 
 WEEK = """## 八、本周可证伪判断
@@ -97,6 +98,65 @@ class TestOverdue(unittest.TestCase):
     def test_判定日当天不算过期(self):
         _, items = audit([row('J2026-W43-1', due='2026-11-20')], lambda jid: WEEK)
         self.assertEqual(overdue(items, datetime.date(2026, 11, 20)), [])
+
+
+class Test裁判来源(unittest.TestCase):
+    """「裁判只能取手册第三节列过的」这句话此前没有判据。
+
+    查第一条真数据就不对：台账写「财政部预算公开」，手册里叫「预算与决算公开」——
+    名字不在名单里，等于那条判断在制度上「无裁判可用」，而台账看着完全正常。
+    所以这里三条：不在名单要报、与第八节不一致要报、名单读不出来也要报（不能静默）。
+    """
+
+    HANDBOOK = """## 三、独立裁判清单
+
+| 裁判 | 能裁定什么 | 为什么可信 | 取数处 |
+|---|---|---|---|
+| 海关月度数据 | 贸易流 | 行政统计 | 海关统计平台 |
+| 预算与决算公开 | 有没有钱 | 法定公开 | 财政部预算司 |
+| **时间＋预登记账本** | 判断本身对错 | 不需要人评理 | 第八节 → 第七节 |
+"""
+
+    def _row(self, ref, jid='J2026-W43-1'):
+        return [jid, '判断原文', '阈值', ref, '2026-11-20', '⏳ 待判', '']
+
+    def test_名单从手册表格读_星号要去掉(self):
+        allowed = J.allowed_referees(self.HANDBOOK)
+        self.assertEqual(allowed, ['海关月度数据', '预算与决算公开', '时间＋预登记账本'])
+        self.assertIn('时间＋预登记账本', allowed)
+
+    def test_括号里是取数处_不参与比对(self):
+        self.assertEqual(J.referee_name('预算与决算公开（财政部预算司）'), '预算与决算公开')
+        self.assertEqual(J.referee_name('海关月度数据(8 位 HS 编码)'), '海关月度数据')
+        self.assertEqual(J.referee_name(''), '')
+
+    def test_名单内不报错(self):
+        allowed = J.allowed_referees(self.HANDBOOK)
+        errs = J.check_referees([self._row('海关月度数据（海关统计平台）')], allowed, {})
+        self.assertEqual(errs, [])
+
+    def test_不在名单要报_并给最接近的(self):
+        allowed = J.allowed_referees(self.HANDBOOK)
+        errs = J.check_referees([self._row('财政部预算公开')], allowed, {})
+        self.assertTrue(any('不在手册第三节名单内' in e for e in errs), errs)
+        self.assertTrue(any('预算与决算公开' in e for e in errs), errs)
+
+    def test_裁判空着要报(self):
+        allowed = J.allowed_referees(self.HANDBOOK)
+        errs = J.check_referees([self._row('')], allowed, {})
+        self.assertTrue(any('裁判列是空的' in e for e in errs), errs)
+
+    def test_与第八节不一致要报(self):
+        """台账写着「原样抄进下表，改一个字就对不上」——那就让脚本去看。"""
+        allowed = J.allowed_referees(self.HANDBOOK)
+        weeks = {'J2026-W43-1': ('周观点-2026-W43.md', '海关月度数据（海关统计平台）')}
+        errs = J.check_referees([self._row('海关月度数据（海关总署）')], allowed, weeks)
+        self.assertTrue(any('与 周观点-2026-W43.md 第八节不一致' in e for e in errs), errs)
+
+    def test_名单读不出来不能静默放过(self):
+        """手册改名/表被删时不报错就糟了：那等于校验悄悄消失，而报告仍写「通过」。"""
+        errs = J.check_referees([self._row('海关月度数据')], [], {})
+        self.assertTrue(any('判据失效' in e for e in errs), errs)
 
 
 if __name__ == '__main__':

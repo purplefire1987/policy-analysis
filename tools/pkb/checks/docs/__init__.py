@@ -32,7 +32,8 @@
 """
 import argparse
 
-from pkb.core import AGENTS, INDEX, README, STATUS, EXPERT_MD, EXPERT_DIR, read, Result, Verdict
+from pkb.core import (AGENTS, INDEX, README, STATUS, EXPERT_MD, EXPERT_DIR, EXPERT_SKILL,
+                      OVERVIEW_DIR, read, Result, Verdict)
 
 from . import consistency, declared, dnsource, expert_pkg, hygiene, ledger, literals
 from ._state import rep
@@ -46,13 +47,17 @@ def _load_docs():
     **只放真被读的键**：`index` 曾在这里读进来却没有任何检查用它，而它让
     「本检查核对 AGENTS／index／README…」这句话听起来是真的（2026-10-26 核出并删）。
     加键之前先确有一个检查会读它——否则读盘只是把「已核对」演给读者看。
-    README 与 运行状态 目前只被节拍比对用到，不是全量核对。
+    10-26 又加回 index／政策速览／SKILL：`check_structure_numbers` 现在要扫它们里面的
+    结构数字（同一个数在规则类文档里共有 9 处），读进来是真被消费的。
     """
     return {
         'AGENTS': read(AGENTS, ''),
+        'index': read(INDEX, ''),
+        '政策速览': read(OVERVIEW_DIR / '政策速览.md', ''),
         'README': read(README, ''),
         '专家定义': read(EXPERT, ''),
         '专家包README': read(EXPERT_DIR / 'README.md', ''),
+        'SKILL': read(EXPERT_SKILL / 'SKILL.md', ''),
         '运行状态': read(STATUS, ''),
     }
 

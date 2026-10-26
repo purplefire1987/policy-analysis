@@ -182,7 +182,7 @@ class Test结构常量(unittest.TestCase):
 
     def test_节数写错要报(self):
         errs, _o = _const_check('- **结构常量**（33 张产业卡、15 条索引链、七节、八字段）')
-        self.assertTrue(any('周观点节数' in e for e in errs), errs)
+        self.assertTrue(any('周观点' in e and '节' in e for e in errs), errs)
 
     def test_卡数写错要报(self):
         errs, _o = _const_check('- **结构常量**（32 张产业卡、15 条索引链、八节、八字段）')
@@ -195,4 +195,44 @@ class Test结构常量(unittest.TestCase):
     def test_正确写法不报且给出实测值(self):
         errs, oks = _const_check('- **结构常量**（33 张产业卡、15 条索引链、八节、八字段）')
         self.assertEqual(errs, [])
-        self.assertTrue(any('周观点节数 8' in o for o in oks), oks)
+        self.assertTrue(any('张产业卡 33' in o for o in oks), oks)
+
+
+class Test结构数字扫全文档(unittest.TestCase):
+    """同一个结构数字散在多份文档里，只校验 AGENTS 那一句等于其余各处无人看管。
+
+    2026-10-26 实测：AGENTS、index、政策速览、专家定义四份共 20 余处写法，
+    旧实现只比对 AGENTS 的「结构常量」那一句。这里钉住三条：
+    ① 非 AGENTS 的文档写错也要报，且**报出文件与行号**（不然知道错不知改哪儿）；
+    ② 台账/报告里的历史数字不许被当成错（那是记录，改了就是篡改）；
+    ③ 一处也扫不到时要报判据失效，不能打「通过」。
+    """
+
+    def _run(self, docs):
+        S.rep.errors.clear()
+        S.rep.warns.clear()
+        S.rep.oks.clear()
+        C.check_structure_numbers(docs)
+        return [m for _i, m in S.rep.errors], list(S.rep.oks)
+
+    def test_别的文档写错要报出文件与行号(self):
+        errs, _o = self._run({'AGENTS': '- **结构常量**（33 张产业卡、15 条索引链、八节、八字段）',
+                              'index': '第一行\n共 31 张产业卡，一产业一卡。\n'})
+        hit = [e for e in errs if '张产业卡' in e and '31' in e]
+        self.assertTrue(hit, errs)
+        self.assertIn('第 2 行', hit[0])
+
+    def test_受控词与字段也一起比(self):
+        errs, _o = self._run({'AGENTS': '见 30 个受控词与七字段\n'})
+        self.assertTrue(any('个受控词' in e for e in errs), errs)
+        self.assertTrue(any('个信号字段' in e for e in errs), errs)
+
+    def test_历史快照不进扫描范围(self):
+        """体检报告里「138 张卡」是当时的记录，不该被要求改成现在的数。"""
+        errs, _o = self._run({'AGENTS': '33 张产业卡\n',
+                              '体检报告': '停在 2026-10-18，写着 138 张卡／60 个词\n'})
+        self.assertFalse([e for e in errs if '138' in e], errs)
+
+    def test_一处都扫不到要报判据失效(self):
+        errs, _o = self._run({'AGENTS': '没有任何数字。\n'})
+        self.assertTrue(any('判据失效' in e for e in errs), errs)
