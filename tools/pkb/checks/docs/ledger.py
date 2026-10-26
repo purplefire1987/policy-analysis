@@ -13,8 +13,9 @@ import datetime
 import re
 
 from pkb.core import (AGENTS, INDEX, README, EXPERT_MD, STATUS, OVERVIEW_DIR,
-                      LEDGER, TOOLS, read, parse_date)
+                      LEDGER, CHECK_REPORT, TOOLS, read, parse_date)
 from pkb.domain import ARCHIVE_DAYS, STALE_DAYS, VERIFY_DAYS, OBSERVE
+from pkb.domain.ledger import LEDGER_TYPES, LEDGER_OWNERS   # 不在 __all__，见 domain/__init__ 说明
 
 from ._state import err, warn, ok
 
@@ -214,6 +215,133 @@ def triage(text, today=None):
             if ym <= today.strftime('%Y-%m'):
                 out['observe'].append((i, c, f'观察窗口 {ym} 已到，该核了'))
     return out
+
+
+def check_ledger_values():
+    """「类型」「负责环节」两列只能取约定值（2026-10-26 增）。
+
+    为什么单列：取值表写在 AGENTS 与台账第一节，但以前一个字都没校验过。写错的代价
+    不是报错，是**静默不被读**——`plan` 只抽「负责环节＝采集」，写成「采集入库」这一行
+    就永远轮不到派活；类型写成「结构问题」，「内容类缺档」与「结构错」在体检里混成一类。
+    与 T-20261026-01 那条「后半条静默消失」同形：账还在，只是没人再看它。
+
+    只判这两列，不判状态：状态是四态＋若干收尾写法（`✅ 已闭环`／`🚫 已放弃`／`⛔ 搁置`），
+    措辞还在演进，硬判会把正确写法判错（判据宁窄不错认）。
+    关闭记录（五列）没有这两列，不查。
+    """
+    text = read(LEDGER, '')
+    if not text:
+        warn('台账', '读不到任务台账，本项无法校验')
+        return
+    bad = 0
+    for i, c in ledger_rows(text):
+        if len(c) < 8:
+            continue                      # 列数不对由 check_ledger_shape 报，这里不重复判
+        for col, allowed, label in ((3, LEDGER_TYPES, '类型'), (4, LEDGER_OWNERS, '负责环节')):
+            if c[col] in allowed:
+                continue
+            bad += 1
+            err('台账', f'{c[0]} 第 {i + 1} 行{label}「{c[col]}」不在取值表内'
+                        f'（{"／".join(allowed)}）——取值写错不会报错，只会让这一行不再被读')
+    if not bad:
+        ok(f'台账取值合规（{len(LEDGER_TYPES)} 类类型、{len(LEDGER_OWNERS)} 个负责环节）')
+
+
+def _queue():
+    """任务台账「存量补采队列」：{页: {'claim': date|None, 'status': str}}。
+
+    不复用 `actions/plan.py` 的同名解析：checks 不许 import actions（分层单向），
+    两处读的是同一张表，但一处为「派活」、一处为「核对做没做」，取舍不同。
+    """
+    out, inq = {}, False
+    for line in read(LEDGER, '').split('\n'):
+        if line.startswith('## '):
+            inq = '存量补采队列' in line
+        elif inq and line.startswith('|') and not line.startswith('|---'):
+            c = [x.strip() for x in line.strip().strip('|').split('|')]
+            if len(c) >= 6 and '页' not in c[0]:
+                out[c[0]] = {'claim': parse_date(c[4]), 'status': c[5]}
+    return out
+
+
+def _latest_check_section():
+    """体检报告最新一节：(日期, 正文)。
+
+    只认带日期的 `### YYYY-MM-DD` 标题——`### 下一轮（2026-10-26 22:00）应核对的事项`
+    这类占位标题不是一次真实体检，不能被当成「最新一节」。
+    """
+    text = read(CHECK_REPORT, '')
+    if not text:
+        return None
+    heads = [(m.start(), parse_date(m.group(1)))
+             for m in re.finditer(r'^### (\d{4}-\d{2}-\d{2})', text, re.M)]
+    if not heads:
+        return None
+    start, day = heads[0]
+    end = heads[1][0] if len(heads) > 1 else len(text)
+    return day, text[start:end]
+
+
+def _released(body, pages):
+    """「释放」二字之后紧跟的页名：只认宾语，不认整节出现过。
+
+    为什么这么窄：10-24 那节既有「**本期释放**：存量补采「国防军事」页」，又有
+    「三页首次纳入规则：国防军事／区域经济／科技创新，本期释放最旧的国防军事页」。
+    按整节匹配，三页全会被算成已释放，于是「区域经济」被判「说了没记」——假警。
+    取 `释放` 之后 80 字、到第一个句号或换行为止，页名出现在这里才算释放的对象。
+    """
+    out = []
+    for m in re.finditer('释放', body):
+        tail = re.split(r'[。\n]', body[m.end():m.end() + 80])[0]
+        out += [p for p in pages if p in tail]
+    return sorted(set(out))
+
+
+def check_release_logged():
+    """每期体检必须交代「释放了哪页哪批」，且台账要记领取（2026-10-26 增）。
+
+    为什么单列：体检报告开头自己写着「每节末尾要写『本次释放的页／批次』」，提示词第五节
+    也要求「必须写明，或写明本期不释放，不许留空」——但从 10-24 起到现在，这个要求
+    **没有任何判据**：2026-10-24 那节就真的没写（释放记录只落在 [[运行状态]]），
+    而页面上的那句要求读起来仍然像真的。
+
+    判三件事：
+      ① 最新一节有没有出现「释放」二字（含「本期不释放」）；
+      ② 说了释放，点名的页是否真在存量队列里；
+      ③ 点名的页，台账「最近领取」是否不早于该节日期——写了没记，下一期会重复释放。
+    """
+    seq = _latest_check_section()
+    if not seq:
+        warn('体检报告', '读不到带日期的检查记录，本项无法校验')
+        return
+    day, body = seq
+    if '释放' not in body:
+        err('体检报告', f'最新一节（{day}）没有交代「本期释放了哪页哪批」或「本期不释放」——'
+                       f'这是领取闸门的唯一留痕，缺了下一期只能靠猜')
+        return
+    pages = _queue()
+    named = _released(body, pages)
+    if '不释放' in body or '无页可释放' in body:
+        pend = [p for p, v in pages.items() if not v['claim'] and '✅' not in v['status']]
+        if pend:
+            warn('体检报告', f'写「本期不释放」，但队列里还有未领页（{"、".join(pend)}）——'
+                            f'核对闸门，别让页卡在队列里')
+        else:
+            ok(f'体检释放留痕：{day} 本期不释放（队列无未领页）')
+        return
+    if not named:
+        warn('体检报告', '写了「释放」，但没点名队列里的任何一页——'
+                        '照抄队列里的页名，否则无法核对是否真释放')
+        return
+    bad = False
+    for p in named:
+        claim = pages[p]['claim']
+        if not claim or claim < day:
+            bad = True
+            err('体检报告', f'本节写明释放「{p}」，台账「最近领取」是 '
+                            f'{claim or "空"}——说了没记，下一期会重复释放同一页')
+    if not bad:
+        ok(f'体检释放留痕：{day} 释放 {"、".join(named)}，台账领取日已对齐')
 
 
 def check_ledger_hygiene():

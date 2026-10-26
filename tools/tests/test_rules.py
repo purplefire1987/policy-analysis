@@ -7,6 +7,7 @@
 
 跑法：python3 -m unittest discover -s tools/tests
 """
+import re
 import sys
 import unittest
 from pathlib import Path
@@ -15,10 +16,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from pkb.checks.docs import _state as S            # noqa: E402
 from pkb.checks.docs import consistency as C      # noqa: E402
+from pkb.core import AGENTS                       # noqa: E402
 from pkb.domain import (BLACK, BAD_SUBJECT, is_bad, DOMAINS, STAT_DOMAINS,  # noqa: E402
                         IMPACTS, STATUSES, REQUIRED_FIELDS, FIELD_MAP, LEGACY_WEEKS,
                         JUDGE_SINCE, IMPACT_SINCE, ANALYSIS_TYPES, ANALYSIS_SPINE,
-                        ANALYSIS_WORD_LIMIT)
+                        ANALYSIS_WORD_LIMIT, STANCES, STANCE_MIN)
 
 
 class TestBlacklist(unittest.TestCase):
@@ -236,3 +238,20 @@ class Test结构数字扫全文档(unittest.TestCase):
     def test_一处都扫不到要报判据失效(self):
         errs, _o = self._run({'AGENTS': '没有任何数字。\n'})
         self.assertTrue(any('判据失效' in e for e in errs), errs)
+
+
+class Test立场类别同步(unittest.TestCase):
+    """「至少覆盖 3 类主体（官方／市场／产业／学术／国际／舆论）」这条口径写在 AGENTS
+    七要素表里，`plan` 的检索提示直接引用它。**名字从文档现读、不在代码里存第二份**
+    ——它会加长，两份不同步时谁都不报错。"""
+
+    def test_与AGENTS七要素同集合(self):
+        text = AGENTS.read_text(encoding='utf-8')
+        m = re.search(r'至少覆盖 (\d+) 类主体\*\*（(.+?)）', text)
+        self.assertTrue(m, 'AGENTS 里找不到「至少覆盖 N 类主体（…）」——判据失效，须同步本测试')
+        self.assertEqual(int(m.group(1)), STANCE_MIN)
+        self.assertEqual(set(m.group(2).split('／')), set(STANCES))
+
+    def test_没有空值或重复(self):
+        self.assertEqual(len(set(STANCES)), len(STANCES))
+        self.assertFalse([x for x in STANCES if not x.strip()])

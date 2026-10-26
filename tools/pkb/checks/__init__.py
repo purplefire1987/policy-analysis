@@ -13,7 +13,7 @@
 from dataclasses import dataclass
 from types import ModuleType
 
-from . import analysis, docs, health, judgments, prompts, signals, structure, views, weeks
+from . import analysis, archives, docs, health, judgments, prompts, signals, structure, views, weeks
 
 
 @dataclass(frozen=True)
@@ -33,6 +33,7 @@ class Spec:
 # 顺序 = 输出编号顺序。按名称字母序排列，与模块化之前 glob 的结果一致。
 REGISTRY = (
     Spec('check_analysis.py', analysis),
+    Spec('check_archives.py', archives),
     Spec('check_docs.py', docs),
     Spec('check_health.py', health),
     Spec('check_judgments.py', judgments),

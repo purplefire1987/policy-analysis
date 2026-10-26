@@ -12,7 +12,15 @@ from .blacklist import (                               # noqa: F401
 from .fields import (                                   # noqa: F401
     DOMAINS, STAT_DOMAINS, IMPACTS, STATUSES, REQUIRED_FIELDS, CARD_SIZE_WARN,
     JUDGE_STATES, JUDGE_PENDING, ANALYSIS_TYPES, ANALYSIS_WORD_LIMIT, ANALYSIS_SPINE,
+    STANCES, STANCE_MIN, ARCHIVE_DATE_TOLERANCE,
 )
+# `ledger.py` 的 LEDGER_TYPES／LEDGER_OWNERS **故意不从包里再导出**（2026-10-26）：
+#   口径扫描（checks/docs/literals）以「代码里的字符串常量值与 domain 某个取值完全相同」
+#   为判据，而这两张表的取值是通用词——「采集／体检／周观点／分析」同时是运行状态的任务名
+#   与目录名，「断档」同时是信号概念，「结构」同时是卡片字段。一旦进扫描词典，11 处
+#   **正确**写法立刻被判违规（paths.py 的目录名、status.py 的灯标签）。
+#   一条会误伤正确写法的规则比不扫更糟——它教人以后绕开规则。
+#   需要这两个表的只有 `checks/docs/ledger.py`，它直接 import `pkb.domain.ledger`。
 from .chains import FIELD_MAP                           # noqa: F401
 from .automations import AUTOMATIONS, PROMPT_ANCHORS    # noqa: F401
 from .legacy import LEGACY_WEEKS, JUDGE_SINCE, IMPACT_SINCE   # noqa: F401
@@ -25,6 +33,7 @@ __all__ = [
     'DOMAINS', 'STAT_DOMAINS', 'IMPACTS', 'STATUSES', 'REQUIRED_FIELDS', 'CARD_SIZE_WARN',
     'JUDGE_STATES', 'JUDGE_PENDING',
     'ANALYSIS_TYPES', 'ANALYSIS_WORD_LIMIT', 'ANALYSIS_SPINE',
+    'STANCES', 'STANCE_MIN', 'ARCHIVE_DATE_TOLERANCE',
     'FIELD_MAP',
     'AUTOMATIONS', 'PROMPT_ANCHORS',
     'LEGACY_WEEKS', 'JUDGE_SINCE', 'IMPACT_SINCE',

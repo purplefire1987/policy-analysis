@@ -9,6 +9,9 @@
 它只读不写（唯一例外：什么都不改，连台账也不动）。输出的每一段都直接可执行，
 并给出可以原样粘回任务台账的表格行，避免手工算日期算错。
 
+观点两段的每条下面有一行「检索：」——机关取自卡片已有的「发文机关」字段，主体类别取
+AGENTS 七要素的口径。它是**提示不是结论**：省掉「从哪找」这一步，判断与出处仍由人核。
+
 用法（统一走入口）：
   run.py plan                 # 本轮清单（采集开工前跑）
   run.py plan --round 34      # 只影响标题里的轮次号
@@ -26,6 +29,7 @@ import datetime
 from pkb.core import (CARD_DIR, SIGNAL_DIR, COLLECT_LOG, LEDGER, STATUS,
                  read as lib_read, md_section_lines, table_rows, parse_date,
                  span, iso_week)
+from pkb.domain import STANCES, STANCE_MIN
 # 路径与通用件唯一定义处：pkb/core/paths.py
 # 命名注意：lib 里 LEDGER=任务台账、COLLECT_LOG=采集日志；本文件沿用旧名 LEDGER=采集日志
 TASKS = LEDGER                 # 任务台账.md
@@ -33,6 +37,8 @@ LEDGER = COLLECT_LOG           # 采集日志.md（保留旧变量名，避免�
 
 SEC_HEAD = re.compile(r'^### (\d{4}-\d{2}-\d{2}) · (.+?)\s*$', re.M)
 ANY_H3 = re.compile(r'^### ', re.M)
+ORG = re.compile(r'\*\*发文机关\*\*：\s*([^｜|\n]+)')
+TITLE_NOISE = re.compile(r'^(关于|印发|转发)|(的)?(若干)?(通知|意见|方案|规划|办法|规定|条例|决定|公告|措施|指引|细则)$')
 
 TODAY = datetime.date.today()
 STOCK_GAP = 14      # 信号页断档超过此天数 → 进存量队列
@@ -87,8 +93,42 @@ def scan_cards():
             else:
                 st, kind = 'c', '无标题'
             out.append({'card': card, 'date': m.group(1),
-                        'title': m.group(2), 'state': st, 'kind': kind})
+                        'title': m.group(2), 'state': st, 'kind': kind,
+                        'org': short_org(chunk)})
     return out
+
+
+def short_org(chunk):
+    """小节「发文机关」→ 检索用的短名：首个机关 + 「等 N 部门」。
+
+    只取事实（机关名就写在小节里），不推断该找谁写观点——那是检索之后的事。
+    括注（「国务院（国家发展改革委、商务部编制）」的括号部分）只保留主机关，
+    检索式里塞一串编制单位反而搜不准。
+    """
+    m = ORG.search(chunk)
+    if not m:
+        return ''
+    raw = re.sub(r'（[^）]*）|\([^)]*\)', '', m.group(1))
+    names = [x.strip() for x in raw.split('、') if x.strip()]
+    if not names:
+        return ''
+    return names[0] + (f'等 {len(names)} 部门' if len(names) > 1 else '')
+
+
+def search_hint(x):
+    """一行「怎么搜」：机关 + 标题主干。只打印，不写盘、不生成观点。
+
+    为什么加：欠账清单只给标题，等于把「去搜什么」也留给人工重新想一遍；
+    2026-10-26 的审计里，50 多个无观点小节的补录长期停滞，卡点往往不是写作而是
+    「不知道从哪找」。这里只把**已写在卡片里的事实**（发文机关、政策名）整理成检索式。
+
+    标题主干是机械去噪（去书名号／去「关于」「的若干意见」这类文种词），搜不准就当
+    提示忽略；**不许**把这里的结果当检索结论——它没有联网，也没有看过任何原文。
+    """
+    title = re.sub(r'[《》""''（）()]', '', x['title'])
+    kernel = TITLE_NOISE.sub('', title).strip() or title
+    head = f'{x["org"]} ' if x.get('org') else ''
+    return f'     检索：{head}{kernel[:30]}'
 
 
 def scan_signals():
@@ -395,18 +435,22 @@ def pr_views(p):
     print(f'\n【4·观点·T+1 必清（昨日及今天新增）】{len(v["fresh"])} 个')
     for x in v['fresh']:
         print(f'  {x["card"]} → {x["date"]} · {x["title"][:40]}{tag(x)}')
+        print(search_hint(x))
 
     print(f'\n【5·观点·存量（配额 {VIEW_DAILY} 个/轮，本周已清 {v["weekly_done"]}/{VIEW_WEEKLY}'
           + (f'，本周还需 {v["weekly_need"]} 个' if v['weekly_need'] else '，本周目标已达成') + '）】')
     for x in v['back'][:p['top']]:
         print(f'  {x["date"]} · {x["card"]} → {x["title"][:38]}{tag(x)}')
+        print(search_hint(x))
     if len(v['back']) > p['top']:
         print(f'  …… 另有 {len(v["back"]) - p["top"]} 个，按日期从旧到新取')
     if v['back_total']:
         print(f'  余额 {v["back_total"]} 个；按 {VIEW_DAILY} 个/轮约需 '
               f'{v["back_total"] // VIEW_DAILY + 1} 轮，按周目标 {VIEW_WEEKLY} 个约需 '
               f'{v["back_total"] / VIEW_WEEKLY:.1f} 周')
-    print('\n注：T+1 必清优先于存量——新政策当天不闭环，就会变成明天的存量，欠账永远追不上。')
+    print(f'\n注：每条观点 5~8 条、至少覆盖 {STANCE_MIN} 类主体'
+          f'（{"／".join(STANCES)}），逐条须有可访问来源——口径见 AGENTS 第六节「七要素」。')
+    print('注：T+1 必清优先于存量——新政策当天不闭环，就会变成明天的存量，欠账永远追不上。')
 
 
 def pr(p):

@@ -187,3 +187,140 @@ class Test清理动作(unittest.TestCase):
             with mock.patch.object(L, 'LEDGER', p):
                 L.check_ledger_shape()
         self.assertEqual([m for _i, m in S.rep.errors], [])
+
+
+def values(text):
+    """跑一次取值判据，返回 (errors, oks)。"""
+    S.rep.oks.clear()
+    S.rep.errors.clear()
+    S.rep.warns.clear()
+    with tempfile.TemporaryDirectory() as d:
+        p = Path(d) / '任务台账.md'
+        p.write_text(text, encoding='utf-8')
+        with mock.patch.object(L, 'LEDGER', p):
+            L.check_ledger_values()
+    return [m for _i, m in S.rep.errors], list(S.rep.oks)
+
+
+class Test取值合规(unittest.TestCase):
+    """类型与负责环节写错不会报错，只会让那一行不再被读——所以每条都要有反例。"""
+
+    def test_正常取值不报(self):
+        errs, oks = values(ledger_text([trow('T-1', '🆕 待办', 1)]))
+        self.assertEqual(errs, [])
+        self.assertTrue(any('取值合规' in o for o in oks), oks)
+
+    def test_类型写错要报出行号与取值表(self):
+        bad = '| T-2 | 2026-09-01 | 某问题 | 结构问题 | 采集 | 🆕 待办 | 2026-10-26 | 依据。 |'
+        errs, _o = values(ledger_text([bad]))
+        self.assertEqual(len(errs), 1, errs)
+        self.assertIn('类型', errs[0])
+        self.assertIn('结构问题', errs[0])
+        self.assertIn('第 7 行', errs[0])
+
+    def test_负责环节写错要说明后果(self):
+        bad = '| T-3 | 2026-09-01 | 某问题 | 结构 | 采集入库 | 🆕 待办 | 2026-10-26 | 依据。 |'
+        errs, _o = values(ledger_text([bad]))
+        self.assertEqual(len(errs), 1, errs)
+        self.assertIn('负责环节', errs[0])
+        self.assertIn('不再被读', errs[0])
+
+    def test_两列都错各报一条(self):
+        bad = '| T-4 | 2026-09-01 | 某问题 | 结构错 | 采集入库 | 🆕 待办 | 2026-10-26 | 依据。 |'
+        errs, _o = values(ledger_text([bad]))
+        self.assertEqual(len(errs), 2, errs)
+
+    def test_关闭记录五列不参与(self):
+        arch = '| T-9 | 2026-08-01 | 2026-08-02 | 某问题 | 依据。 |'
+        errs, _o = values(ledger_text([trow('T-1', '🆕 待办', 1)], arch))
+        self.assertEqual(errs, [])
+
+    def test_空台账只提示(self):
+        errs, _o = values('')
+        self.assertEqual(errs, [])
+
+
+QUEUE_HEAD = ('# 任务台账\n\n## 四、存量补采队列（信号页断档 > 14 天）\n\n'
+              '| 页 | 首次空白日 | 已补至 | 剩余天数 | 最近领取 | 状态 |\n'
+              '|---|---|---|---|---|---|\n')
+
+
+def task_text(*queues):
+    return QUEUE_HEAD + '\n'.join(queues) + '\n'
+
+
+def report_text(*sections):
+    return ('# 知识库体检报告\n\n## 二、历次检查记录（只追加）\n\n' + '\n'.join(sections)
+            + '\n\n### 下一轮（2026-10-26 22:00）应核对的事项\n\n占位不是一次体检。\n')
+
+
+def release(report, ledger):
+    """跑一次释放留痕判据，返回 (errors, warns, oks)。"""
+    S.rep.oks.clear()
+    S.rep.errors.clear()
+    S.rep.warns.clear()
+    with tempfile.TemporaryDirectory() as d:
+        rp = Path(d) / '体检报告.md'
+        tp = Path(d) / '任务台账.md'
+        rp.write_text(report, encoding='utf-8')
+        tp.write_text(ledger, encoding='utf-8')
+        with mock.patch.object(L, 'CHECK_REPORT', rp), mock.patch.object(L, 'LEDGER', tp):
+            L.check_release_logged()
+    return ([m for _i, m in S.rep.errors], [m for _i, m in S.rep.warns], list(S.rep.oks))
+
+
+class Test释放留痕(unittest.TestCase):
+    """体检报告自己写着「每节末尾要写本次释放的页／批次」，此前没有任何判据。"""
+
+    Q = ('| 国防军事 | 2026-08-08 | 2026-08-21 | 66 | 2026-10-25 | 补采中 |\n'
+         '| 科技创新 | 2026-09-30 | — | 27 | — | 待领 |')
+
+    def test_写了释放且台账已记领取(self):
+        rep = report_text('### 2026-10-24 23:09 — 第四次\n\n| **本期释放** | 存量补采「国防军事」页 |')
+        errs, warns, oks = release(rep, task_text(self.Q))
+        self.assertEqual((errs, warns), ([], []))
+        self.assertTrue(any('国防军事' in o for o in oks), oks)
+
+    def test_没写释放要报(self):
+        rep = report_text('### 2026-10-24 23:09 — 第四次\n\n本次各项全绿。')
+        errs, _w, _o = release(rep, task_text(self.Q))
+        self.assertEqual(len(errs), 1, errs)
+        self.assertIn('释放', errs[0])
+
+    def test_写了释放但台账没记领取要报(self):
+        rep = report_text('### 2026-10-24 23:09 — 第四次\n\n| **本期释放** | 「科技创新」页 |')
+        errs, _w, _o = release(rep, task_text(self.Q))
+        self.assertTrue(any('说了没记' in e for e in errs), errs)
+
+    def test_领取日早于体检日也算没记(self):
+        q = '| 国防军事 | 2026-08-08 | 2026-08-21 | 66 | 2026-10-20 | 补采中 |'
+        rep = report_text('### 2026-10-24 23:09 — 第四次\n\n| **本期释放** | 「国防军事」页 |')
+        errs, _w, _o = release(rep, task_text(q))
+        self.assertTrue(any('说了没记' in e for e in errs), errs)
+
+    def test_整节提到三个页名不算三次释放(self):
+        """10-24 那节先列三页纳入规则、再说释放最旧的那页——只认宾语位置。"""
+        rep = report_text('### 2026-10-24 23:09 — 第四次\n\n'
+                          '- 三页纳入规则：国防军事／区域经济／科技创新，本期释放最旧的国防军事页。')
+        errs, warns, _o = release(rep, task_text(self.Q + '\n| 区域经济 | 2026-09-21 | 2026-09-24 | 32 | — | 待领 |'))
+        self.assertEqual((errs, warns), ([], []), (errs, warns))
+
+    def test_写本期不释放但有未领页要提示(self):
+        rep = report_text('### 2026-10-24 23:09 — 第四次\n\n本期不释放（队列无待领页）。')
+        errs, warns, _o = release(rep, task_text(self.Q))
+        self.assertEqual(errs, [])
+        self.assertTrue(any('不释放' in w and '科技创新' in w for w in warns), warns)
+
+    def test_写本期不释放且队列已清零通过(self):
+        q = '| 国防军事 | 2026-08-08 | 2026-08-21 | 0 | 2026-10-25 | ✅ |'
+        rep = report_text('### 2026-10-24 23:09 — 第四次\n\n本期不释放。')
+        errs, warns, oks = release(rep, task_text(q))
+        self.assertEqual((errs, warns), ([], []))
+        self.assertTrue(any('不释放' in o for o in oks), oks)
+
+    def test_占位标题不算最新一节(self):
+        rep = ('# 知识库体检报告\n\n## 二、历次检查记录\n\n'
+               '### 下一轮（2026-10-30）应核对的事项\n\n本期不释放。\n')
+        _e, warns, _o = release(rep, task_text(self.Q))
+        self.assertTrue(any('读不到' in w for w in warns), warns)
+
