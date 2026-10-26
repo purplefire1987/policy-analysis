@@ -82,6 +82,55 @@ def check_actions():
         ok(f'入口动作表三处一致（{len(impl)} 个：{"、".join(sorted(impl))}）')
 
 
+LEDGER_HOMES = {'未闭环项': 8, '关闭记录': 5}
+
+
+def _task_sections(text):
+    """按 `## ` 切节，只留含 `| T-` 行的节：{节名: [行]}。"""
+    out, cur = {}, ''
+    for line in text.split('\n'):
+        if line.startswith('## '):
+            cur = line[3:].strip()
+        elif line.startswith('| T-'):
+            out.setdefault(cur, []).append(line)
+    return out
+
+
+def check_ledger_shape():
+    """台账结构：T- 行必须住在两节之内、列数与表头一致、未闭环项里编号唯一。
+
+    为什么单列（2026-10-26）：一条记录被粘成两行共用一行的形态（`… | ✅ 已关闭 | … || T-x | …`），
+    `plan` 按行首取编号，后半条就**静默消失**——T-20261026-01 因此两天没进过派活清单，
+    谁也没发现。同理有一行 ✅ 落在第五节后面，也读不到。判据认列数与节位，不认内容。
+    """
+    text = read(LEDGER, '')
+    if not text:
+        warn('台账', '读不到任务台账，本项无法校验')
+        return
+    secs = _task_sections(text)
+    bad = False
+    for name, rows in secs.items():
+        home = next((k for k in LEDGER_HOMES if k in name), None)
+        if not home:
+            bad = True
+            err('台账', f'{len(rows)} 行落在「{name}」——T- 行只能住「未闭环项」与「关闭记录」，'
+                        f'放错节等于漏登记（plan 与体检都读不到）')
+            continue
+        for line in rows:
+            c = [x.strip() for x in line.strip().strip('|').split('|')]
+            if len(c) != LEDGER_HOMES[home]:
+                bad = True
+                err('台账', f'{c[0]} 有 {len(c)} 列，「{home}」应为 {LEDGER_HOMES[home]} 列——'
+                            f'多半是两条粘成一行，后半条会被静默丢掉')
+    live = [re.match(r'\| (T-\S+)', x).group(1)
+            for k, rows in secs.items() if '未闭环项' in k for x in rows]
+    for i in sorted({x for x in live if live.count(x) > 1}):
+        bad = True
+        err('台账', f'{i} 在未闭环项出现 {live.count(i)} 次——编号唯一，不复用不重排')
+    if not bad:
+        ok(f'台账结构自洽（{len(live)} 条在「未闭环项」内，列数对齐、编号唯一）')
+
+
 def check_ledger_numbers():
     """任务台账的「问题」列不得写**现状读数**——现状数字只有一个出口：`run.py plan`／`run.py check`。
 

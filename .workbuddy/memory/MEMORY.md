@@ -37,7 +37,7 @@
 - **摘要行契约**：`Result.summary` 就是 `▸摘要`；明细在 `Result.lines`，打多少由 `actions/check.py` 一层决定（`--only`／`--full`）。
 - 动作 8 个：`status／check／fix／plan／week／link／sources／list`（`link` 原叫 `export`，10-25 晚改）。**一模块一动作，文件名即动作名，下划线开头是内部件**（`_proc`／`_snapshot`）；`run.py` 的 `ACTIONS` 与 `pkb/actions/*.py` 由 `test_smoke` 钉住一一对应，`list` 从包里发现模块不手写名单。参数按**真注册**判定，无认领 **exit 2** 并明说结论不含该窗口。扩展方式见 AGENTS 第十节四条（改注册表，不靠命名）。
 - `check_docs` 新增**口径单源扫描**：`ast` 取代码里的字符串常量，与 `pkb.domain.__all__` 现读的词典比对，命中即 exit 1；`REQUIRED_FIELDS`（字段名＝读数据的键）排除。词典不另写，domain 加一项自动覆盖。
-- `tests/`（**162 条**）：`test_md`（解析）／`test_rules`（口径＋扫描器自测）／`test_health`（三分状态、灯矛盾、无轮次、0也写0）／`test_link`（专家包四态、三类差异、拒绝删除、force 后入口可跑）／`test_weeks`（**同分裁决：同批模板化标题各归各行**、真合并须写「合并」二字）／`test_judgments`（编号可回原文）／`test_fetch`（切小节、抽正文、认附件、分级、幂等）／`test_views`（`（待补全）`必算未覆盖）／`test_signals`（坏周号抛错不静默、断档四档边界）／`test_analysis`（字数口径）／`test_structure`（断链过滤三侧）／`test_docs`（log 新旧分界、类型白名单）／`test_prompts`（五条断言各自的反例＋两条「不能误伤」：禁令里的 `tools/xxx.py` 不算直调、模板占位链接放过）／`test_smoke`（`Result` 契约、非法输入是 `BAD_INPUT`、导入无副作用、分层不反向、checks 不 `sys.exit`（**rglob，包内也查**）、**单函数 ≤50 行**、**动作模块↔ACTIONS 一一对应**）。
+- `tests/`（**169 条**）：`test_md`（解析）／`test_rules`（口径＋扫描器自测）／`test_health`（三分状态、灯矛盾、无轮次、0也写0）／`test_link`（专家包四态、三类差异、拒绝删除、force 后入口可跑）／`test_weeks`（**同分裁决：同批模板化标题各归各行**、真合并须写「合并」二字）／`test_judgments`（编号可回原文）／`test_fetch`（切小节、抽正文、认附件、分级、幂等）／`test_views`（`（待补全）`必算未覆盖）／`test_signals`（坏周号抛错不静默、断档四档边界）／`test_analysis`（字数口径）／`test_structure`（断链过滤三侧）／`test_docs`（log 新旧分界、类型白名单）／`test_ledger`（台账 T- 行只能住两节、列数对齐、编号唯一、跨节同号不算重复）／`test_prompts`（五条断言各自的反例＋两条「不能误伤」：禁令里的 `tools/xxx.py` 不算直调、模板占位链接放过）／`test_smoke`（`Result` 契约、非法输入是 `BAD_INPUT`、导入无副作用、分层不反向、checks 不 `sys.exit`（**rglob，包内也查**）、**单函数 ≤50 行**、**动作模块↔ACTIONS 一一对应**）。
 - **CI（10-25 挂上）**：`.github/workflows/ci.yml`，每次 push/PR 跑 pyflakes ＋ **空库** pytest（`POLICY_KB_VAULT` 指空目录＝最强契约输入，六项检查全走「文件不存在」分支）。CI **不跑** `run.py check`（要真库，守门人是体检自动化）。
 - `fix` 只修快照、frontmatter 数值、唯一相似断链（≥0.85 单候选）、黑名单来源、副本同步；跳过 log.md；多候选不猜。
 
@@ -58,6 +58,8 @@
 ## 六、三页分工
 
 采集日志管「采到哪天」（**0 也写 0，禁 `—` 与留空**）／运行状态管「跑没跑」（灯）／任务台账管「修没修」（🆕→🟡→⏳→✅／⛔／🚫，只改状态不删行）。台账含三个游标（断档补采、存量队列、清欠进度）。`plan_backlog` 常数 `STOCK_GAP=14／STOCK_BATCH=14／GAP_BATCH=2／GAP_TRIGGER=3／VIEW_DAILY=3／VIEW_WEEKLY=5／CLAIM_PER_CHECK=1`，**领取闸门＝体检节拍**。体检产出＝三页，须写「本期释放了哪页哪批」。
+
+**台账结构有判据（10-26 增）**：`check_docs` 的 `check_ledger_shape` 判三条——T- 行只能住「未闭环项」（8 列）与「关闭记录」（5 列）、列数＝表头列数、未闭环项内编号唯一（跨节同号不算重复，否则会逼人删归档行）。起因是两条记录被粘成一行，`plan` 按**行首**取编号，后半条静默消失两天没人发现。**列数是最灵敏的探针**——两条粘一行必然多出列，判形态不会被措辞骗。另：存量队列「剩余天数」＝今天−已补至（未开补用首次空白日、含头含尾），是相对量、每天自然 +1，体检核的是「已补至前移后它降没降」，不是绝对值。
 
 ## 七、文档纪律
 

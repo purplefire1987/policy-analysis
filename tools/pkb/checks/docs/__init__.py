@@ -92,6 +92,7 @@ def run(argv=None):
     consistency.check_expert_refs(docs)
     ledger.check_no_direct_calls()
     ledger.check_actions()
+    ledger.check_ledger_shape()
     ledger.check_ledger_numbers()
     expert_pkg.check_expert_scripts()
     hygiene.check_log()
