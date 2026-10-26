@@ -33,17 +33,25 @@ def archive(date, title, no='商发〔2026〕1号', file_date=None):
             f'{fd}_商务部_{title}.md')
 
 
-def run(cards=None, arcs=None):
-    """搭一个最小库跑一次；cards/arcs 是 {文件名: 内容} 或 [(内容, 文件名)]。"""
+def run(cards=None, arcs=None, reps=None):
+    """搭一个最小库跑一次；cards 是 {文件名: 内容}，arcs/reps 是 [(内容, 文件名)]。
+
+    **三个目录都要 mock**（2026-10-26）：`run()` 还要读 `raw/reports/` 判断
+    「级别与目录是否一致」，漏 mock 就会去读真实库——测试于是变成「看今天库里几份」，
+    本地绿、CI 空库红，或者反过来。
+    """
     with tempfile.TemporaryDirectory() as d:
-        cd, ad = Path(d) / '卡片', Path(d) / '存档'
+        cd, ad, rd = Path(d) / '卡片', Path(d) / '存档', Path(d) / '报道'
         cd.mkdir()
         for name, text in (cards or {}).items():
             (cd / name).write_text(text, encoding='utf-8')
-        ad.mkdir()
-        for text, name in (arcs or []):
-            (ad / name).write_text(text, encoding='utf-8')
-        with mock.patch.object(A, 'CARD_DIR', cd), mock.patch.object(A, 'ARTICLE_DIR', ad):
+        for base, items in ((ad, arcs), (rd, reps)):
+            base.mkdir()
+            for text, name in (items or []):
+                (base / name).write_text(text, encoding='utf-8')
+        with mock.patch.object(A, 'CARD_DIR', cd), \
+                mock.patch.object(A, 'ARTICLE_DIR', ad), \
+                mock.patch.object(A, 'REPORT_DIR', rd):
             return A.run([])
 
 
@@ -102,3 +110,45 @@ class Test日期核对(unittest.TestCase):
         r = run({'政策卡片-消费.md': card('2026-10-09', '关于促进房车消费的若干措施')},
                 [archive('2026-10-09', '关于促进房车消费的若干措施')])
         self.assertTrue(any('两边一起错' in x for x in r.lines), r.lines)
+
+
+class Test目录归属(unittest.TestCase):
+    """`articles` 只放原文、`reports` 只放报道——判「自称的级别」与「所在目录」是否一致。
+
+    为什么要有：分目录之前 58 份里 26 份不是文件本身，而每份 frontmatter 都写着
+    `存档级别: 官方报道`。字段是对的，只是没人读。光加目录不加判据，下一个人
+    照样能把记者稿塞回 `articles`。这两条钉住「塞回去会报」。
+    """
+
+    def test_报道放进了原文目录要报(self):
+        r = run({'政策卡片-消费.md': card('2026-10-09', '关于促进房车消费的若干措施')},
+                [archive('2026-10-09', '关于促进房车消费的若干措施')])
+        self.assertIn('问题 0', r.summary)
+
+        text, name = archive('2026-10-09', '某会议报道', no='无')
+        text = text.replace('文号: 无', '文号: 无\n存档级别: 官方报道')
+        r2 = run({'政策卡片-消费.md': card('2026-10-09', '某会议报道', no='无')},
+                 [(text, name)])
+        self.assertTrue([x for x in r2.lines if '只该放' in x],
+                        '报道放进 articles/ 必须点名「只该放」')
+
+    def test_原文放进了报道目录要报(self):
+        text, name = archive('2026-10-09', '关于促进房车消费的若干措施')
+        text = text.replace('文号: 商发〔2026〕1号', '文号: 商发〔2026〕1号\n存档级别: 原文')
+        r = run({'政策卡片-消费.md': card('2026-10-09', '关于促进房车消费的若干措施')},
+                reps=[(text, name)])
+        self.assertTrue([x for x in r.lines if '只该放' in x],
+                        '原文放进 reports/ 必须点名「只该放」')
+        self.assertIn('报道区 1', r.summary)
+
+    def test_没有级别字段不报(self):
+        r = run({'政策卡片-消费.md': card('2026-10-09', '关于促进房车消费的若干措施')},
+                [archive('2026-10-09', '关于促进房车消费的若干措施')])
+        self.assertIn('问题 0', r.summary)
+
+    def test_摘要写出报道区份数(self):
+        text, name = archive('2026-10-09', '某会议报道', no='无')
+        text = text.replace('文号: 无', '文号: 无\n存档级别: 官方报道')
+        r = run({'政策卡片-消费.md': card('2026-10-09', '某会议报道', no='无')},
+                reps=[(text, name)])
+        self.assertIn('报道区 1', r.summary)

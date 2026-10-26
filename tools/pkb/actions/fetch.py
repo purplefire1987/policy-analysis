@@ -36,7 +36,7 @@ import tempfile
 import time
 from pathlib import Path
 
-from pkb.core import ARTICLE_DIR, CARD_DIR, read, web, doc
+from pkb.core import ARTICLE_DIR, REPORT_DIR, CARD_DIR, read, web, doc
 from pkb.domain import sources
 
 ORIGIN, MEDIA, NOT_FIRST = sources.LEVELS          # 口径只从 domain 取，不写裸字符串
@@ -131,12 +131,19 @@ def collect(start, end):
 
 
 def stored_urls():
-    """已存档的原文链接集合——幂等的唯一依据（文件名不可靠，标题天天改写）。"""
+    """已归档的链接集合——幂等的唯一依据（文件名不可靠，标题天天改写）。
+
+    **两个目录都要扫**（2026-10-26）：报道类已移到 `raw/reports/`，
+    只扫 `articles` 会让那 26 条 URL 在下次 fetch 时被当成「没存过」重新抓回
+    `articles`——分流白做，而且每跑一次多一份。
+    这里判的是「这个 URL 处理过没有」，不是「它算不算一手」；算不算由 `sources.level` 判。
+    """
     urls = set()
-    if not ARTICLE_DIR.exists():
-        return urls
-    for p in ARTICLE_DIR.glob('*.md'):
-        urls.update(STORED.findall(read(p, '')))
+    for d in (ARTICLE_DIR, REPORT_DIR):
+        if not d.exists():
+            continue
+        for p in d.glob('*.md'):
+            urls.update(STORED.findall(read(p, '')))
     return urls
 
 
@@ -260,8 +267,8 @@ def attempt(e, idx, args, stats, tmpdir):
     if args['keep']:
         keep_page(e, raw)
     if args['dry']:
-        stats['new'] += 1
-        return 'dry', f'{len(body)} 字，附件 {len(atts)}'
+        stats['new' if e['level'] == ORIGIN else 'report'] += 1
+        return 'dry', f'{len(body)} 字，附件 {len(atts)}（{e["why"]}）'
     return write_file(e, lines, degraded, atts, stats, tmpdir, idx)
 
 
@@ -273,21 +280,29 @@ def keep_page(e, raw):
 
 
 def write_file(e, lines, degraded, atts, stats, tmpdir, idx):
-    """落盘。附件先转文本再写，免得正文写完了附件还在失败。"""
+    """落盘。附件先转文本再写，免得正文写完了附件还在失败。
+
+    **按口径分目录**（2026-10-26）：`原文` 进 `raw/articles/`，`官方报道` 进 `raw/reports/`。
+    改这一行的理由：此前两者同放 `articles`，一份央视记者稿与国办发文件并排躺了几个月，
+    目录名「一手」于是变成一句空话——58 份里 29% 不是文件本身，且没人知道。
+    报道不是没价值，但它证明的是「有这件事」，不是「文件这么写」，所以分开住。
+    """
     atts_md, n_ok, skipped = fetch_attachments(atts, idx, tmpdir)
     name = fname(e)
-    dest, n = ARTICLE_DIR / name, 2
+    is_origin = e['level'] == ORIGIN
+    base = ARTICLE_DIR if is_origin else REPORT_DIR
+    dest, n = base / name, 2
     while dest.exists():
-        dest, n = ARTICLE_DIR / f'{name[:-3]}-{n}.md', n + 1
+        dest, n = base / f'{name[:-3]}-{n}.md', n + 1
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(build(e, lines, degraded, atts_md, len(atts), n_ok), encoding='utf-8')
     stats['seen'].add(e['url'])
-    stats['new'] += 1
+    stats['new' if is_origin else 'report'] += 1
     stats['chars'] += len('\n'.join(lines))
     note = f'{len("\n".join(lines))} 字，附件 {len(atts)}（转成 {n_ok}）'
     if skipped:
         note += f'，未转：{"、".join(sorted(skipped))}'
-    return 'new', f'{dest.name} ｜ {note}'
+    return ('new' if is_origin else 'report'), f'{dest.name} ｜ {note}'
 
 
 def run(argv=None):
@@ -299,16 +314,17 @@ def run(argv=None):
         print(f'✗ 找不到 raw/ 目录：{ARTICLE_DIR.parent}（POLICY_KB_VAULT 设错了？）')
         return 1
     entries = collect(args['start'], args['end'])
-    stats = {'new': 0, 'skip': 0, 'nofirst': 0, 'fail': 0, 'chars': 0, 'seen': stored_urls()}
+    stats = {'new': 0, 'report': 0, 'skip': 0, 'nofirst': 0, 'fail': 0, 'chars': 0,
+             'seen': stored_urls()}
     tmpdir = tempfile.mkdtemp(prefix='pkb-fetch-') if not args['dry'] else None
     print(f'\n【fetch】窗口 {args["start"]} ~ {args["end"]}，卡片内 {len(entries)} 条')
     try:
         for i, e in enumerate(entries, 1):
             tag, note = attempt(e, i, args, stats, tmpdir)
-            mark = {'new': '✓ 新存', 'dry': '· 将存', 'skip': '· 跳过',
+            mark = {'new': '✓ 新存', 'report': '~ 存报道', 'dry': '· 将存', 'skip': '· 跳过',
                     'nofirst': '! 无一手源', 'fail': '✗ 失败'}[tag]
             print(f'  {mark:<9} {e["date"]} {e["title"][:34]} ｜ {note}')
-            if tag in ('new', 'dry'):
+            if tag in ('new', 'report', 'dry'):
                 time.sleep(THROTTLE)
     finally:
         if tmpdir:
@@ -319,5 +335,6 @@ def run(argv=None):
     print(f'\n▸摘要: fetch {args["start"]}~{args["end"]} 卡片 {len(entries)} 条 · '
           f'新存 {stats["new"]}（{stats["chars"]} 字）· 已存跳过 {stats["skip"]} · '
           f'无一手源 {stats["nofirst"]} · 抓取失败 {stats["fail"]}'
+          + (f' · 存报道区 {stats["report"]}' if stats['report'] else '')
           + (f'  ← {miss} 条需登记台账' if miss else '  ✓'))
     return 0

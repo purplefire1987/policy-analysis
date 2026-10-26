@@ -19,12 +19,16 @@
 import argparse
 import re
 
-from pkb.core import ARTICLE_DIR, CARD_DIR, parse_date, parse_fm, read, Result, Verdict
-from pkb.domain import ARCHIVE_DATE_TOLERANCE
+from pkb.core import (ARTICLE_DIR, REPORT_DIR, CARD_DIR, parse_date, parse_fm, read,
+                      Result, Verdict)
+from pkb.domain import ARCHIVE_DATE_TOLERANCE, LEVELS
+
+ORIGIN, MEDIA, _NOT_FIRST = LEVELS      # 端口径只从 domain 取，不写裸字符串
 
 SEC = re.compile(r'^### (\d{4}-\d{2}-\d{2}) · (.+)$', re.M)
 NO = re.compile(r'\*\*文号\*\*：\s*([^｜|\n]+)')
 HEAD_LINE = re.compile(r'^(\d{4}-\d{2}-\d{2})_(.+)$')
+LEVEL = re.compile(r'^存档级别:\s*(\S+)', re.M)
 WORD_BAD = ('', '无', '—', '-', '无文号')
 MIN_TITLE = 6
 
@@ -107,6 +111,28 @@ def scan():
     return same, bad, len(arcs)
 
 
+def misplaced():
+    """目录与「存档级别」对不对得上：`articles` 只该放原文，`reports` 只该放报道。
+
+    为什么要有这一条（2026-10-26）：分目录之前，58 份里有 26 份不是文件本身，
+    而每份 frontmatter 早就写着 `存档级别: 官方报道`——**字段是对的，只是没人读**。
+    光加目录不加判据，下一个人照样能把一份记者稿塞回 `articles`。
+    判据只认「自己声明的级别」与「所在目录」是否一致，不判断级别本身对不对
+    （那是填链接那一步的事，见 `domain/sources.py` 的 `level()`）。
+    """
+    out = []
+    for d, want in ((ARTICLE_DIR, ORIGIN), (REPORT_DIR, MEDIA)):
+        if not d.exists():
+            continue
+        for p in sorted(d.glob('*.md')):
+            m = LEVEL.search(read(p, ''))
+            lv = m.group(1).strip() if m else ''
+            if lv and lv != want:
+                out.append(f'{d.name}/{p.name}：自称「{lv}」，却放在 {d.name}/——'
+                           f'{d.name}/ 只该放「{want}」')
+    return out
+
+
 def run(argv=None):
     ap = argparse.ArgumentParser(description='卡片与一手存档的日期交叉核对（只报不阻断）')
     ap.parse_args(list(argv or []))
@@ -114,14 +140,16 @@ def run(argv=None):
         return Result(Verdict.BAD_INPUT, f'未找到产业卡目录：{CARD_DIR}', [f'✗ {CARD_DIR}'])
 
     same, bad, n = scan()
-    if not n:
-        msg = '一手存档 0 份（raw/articles 为空或不存在），本项无结论'
+    bad += misplaced()
+    n_rep = len(list(REPORT_DIR.glob('*.md'))) if REPORT_DIR.exists() else 0
+    if not n and not bad:
+        msg = f'一手存档 0 份（raw/articles 为空或不存在），报道区 {n_rep} 份，本项无结论'
         return Result(Verdict.PASS, msg, [msg])
     lines = ['=== 卡片 × 一手存档 ===',
-             f'存档 {n} 份：日期一致 {same}，问题 {len(bad)}']
+             f'原文 {n} 份／报道 {n_rep} 份：日期一致 {same}，问题 {len(bad)}']
     lines += [f'  · {why}' for why in bad]
     if not bad:
         lines.append('（只核「两份落盘物是否自洽」；两边一起错时本项查不出，外部核对仍在任务台账）')
     mark = '✅' if not bad else '⚠️'
-    summary = f'一手存档 {n} 份：日期一致 {same} · 问题 {len(bad)} {mark}'
+    summary = f'一手存档 {n} 份（报道区 {n_rep}）：日期一致 {same} · 问题 {len(bad)} {mark}'
     return Result(Verdict.PASS, summary, lines)
