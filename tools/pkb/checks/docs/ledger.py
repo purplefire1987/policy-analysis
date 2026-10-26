@@ -1,14 +1,20 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""**入口与台账的统一性**：动作表三处一致、库内不直调脚本、台账不写读数。
+"""**入口与台账的统一性**：动作表三处一致、库内不直调脚本、台账结构与生命周期。
 
 这一组守的都是「同一事实只有一个出口」：
 动作清单只有 `run.py` 一份实现、命令只有 `run.py` 一个入口、
 现状数字只有 `plan`／`check` 一个出口。三份副本一旦出现，漏改不会报错。
+台账另有一件事没人管：**四态之间没有自动过渡**。写完 🟡 就再也不动、
+✅ 堆在未闭环项里不分新旧，读者只能自己猜哪条还在办——2026-10-26 清理时
+12 条 ✅ 与 4 天没动的 🟡 同时存在，就是没人执行过「该退就退」。
 """
+import datetime
 import re
 
-from pkb.core import AGENTS, INDEX, README, EXPERT_MD, STATUS, OVERVIEW_DIR, LEDGER, TOOLS, read
+from pkb.core import (AGENTS, INDEX, README, EXPERT_MD, STATUS, OVERVIEW_DIR,
+                      LEDGER, TOOLS, read, parse_date)
+from pkb.domain import ARCHIVE_DAYS, STALE_DAYS, VERIFY_DAYS, OBSERVE
 
 from ._state import err, warn, ok
 
@@ -161,3 +167,74 @@ def check_ledger_numbers():
                     f'删掉，改成「以 `run.py plan` 为准」（数字只留一个出口）')
     if not bad:
         ok('台账问题列无现状读数（数字统一出口：run.py plan／check）')
+
+
+def ledger_rows(text):
+    """未闭环项里的 T- 行：[(全文行号, 八列)]。
+
+    只认「未闭环项」这一节——落在别节的是结构问题，由 `check_ledger_shape` 报，
+    这里不重复判（同一件事两处判，改口径就要改两处）。
+    """
+    out, cur = [], ''
+    for i, line in enumerate(text.split('\n')):
+        if line.startswith('## '):
+            cur = line
+        elif line.startswith('| T-') and '未闭环项' in cur:
+            out.append((i, [x.strip() for x in line.strip().strip('|').split('|')]))
+    return out
+
+
+def age_of(cell, today):
+    """「最近更新」→ 距今天数；解析不了返回 None（不猜）。"""
+    d = parse_date(cell)
+    return (today - d).days if d else None
+
+
+def triage(text, today=None):
+    """把未闭环项分四堆：{archive, stale, overdue, observe} → [(行号, 八列, 为什么)]。
+
+    动作（`run.py ledger`）与检查（每期体检）共用这一份判定：
+    判定与执行各写一份，迟早一个判 3 天、一个判 5 天。
+    """
+    today = today or datetime.date.today()
+    out = {'archive': [], 'stale': [], 'overdue': [], 'observe': []}
+    for i, c in ledger_rows(text):
+        if len(c) < 8:
+            continue
+        age, st = age_of(c[6], today), c[5]
+        if '✅' in st and age is not None and age >= ARCHIVE_DAYS:
+            out['archive'].append((i, c, f'关闭已 {age} 天'))
+        elif '🟡' in st and age is not None and age > STALE_DAYS:
+            out['stale'].append((i, c, f'{age} 天无动作'))
+        elif '⏳' in st and age is not None and age > VERIFY_DAYS:
+            out['overdue'].append((i, c, f'待验 {age} 天没结论'))
+        m = OBSERVE.search(c[7])
+        if m:
+            ym = f'{m.group(1)}-{m.group(2)}'
+            if ym <= today.strftime('%Y-%m'):
+                out['observe'].append((i, c, f'观察窗口 {ym} 已到，该核了'))
+    return out
+
+
+def check_ledger_hygiene():
+    """台账生命周期：四态之间没人推的那一步，交给人看。
+
+    一律 **warn 不 err**：整理是卫生，不是正确性。把「台账有点乱」判成 exit 1，
+    整篇文档校验就长期红着，红久了没人看（与 `check_views` 同一分工）。
+    但也不能只靠人记——`run.py ledger` 是执行端，本项只负责让它在体检摘要里露面。
+    """
+    text = read(LEDGER, '')
+    if not text:
+        return
+    t = triage(text)
+    tips = {'archive': '归档：`run.py ledger --apply` 搬进第六节',
+            'stale': '退回 🆕：三天没动等于没记',
+            'overdue': '待验过期：要么给结论，要么说清为什么验不了',
+            'observe': '观察窗口已到：核完回写本行'}
+    n = 0
+    for key, msg in tips.items():
+        for _i, c, why in t[key]:
+            warn('台账', f'{c[0]} {why}——{msg}')
+            n += 1
+    if not n:
+        ok('台账生命周期：无到期未归档、无停滞、无待验过期')

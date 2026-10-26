@@ -38,7 +38,7 @@
 """
 import sys
 
-from pkb.actions import check, fetch, fix, link, plan, sources, status, week
+from pkb.actions import check, fetch, fix, ledger, link, plan, sources, status, week
 from pkb.actions import list as listing
 
 USAGE = __doc__
@@ -50,6 +50,7 @@ ACTIONS = {
     'plan':    (plan.run,    '派活清单'),
     'week':    (week.run,    '周观点素材预取：某周政策与信号索引＋行号'),
     'fetch':   (fetch.run,   '抓一手源：卡片里的政策原文落进 raw/articles（默认今天+昨天）'),
+    'ledger':  (ledger.run,  '台账清理：到期归档／停滞退回（默认只看，--apply 写盘）'),
     'link':    (link.run,    '专家包入口接回本体（符号链接，--check 只核对）'),
     'sources': (sources.run, '来源合规扫描（--apply 写盘）'),
     'list':    (listing.run, '列出包内检查项、动作与用途'),

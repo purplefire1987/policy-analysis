@@ -94,6 +94,7 @@ def run(argv=None):
     ledger.check_actions()
     ledger.check_ledger_shape()
     ledger.check_ledger_numbers()
+    ledger.check_ledger_hygiene()
     expert_pkg.check_expert_scripts()
     hygiene.check_log()
     dnsource.check_sources()

@@ -16,6 +16,7 @@ from .fields import (                                   # noqa: F401
 from .chains import FIELD_MAP                           # noqa: F401
 from .automations import AUTOMATIONS, PROMPT_ANCHORS    # noqa: F401
 from .legacy import LEGACY_WEEKS, JUDGE_SINCE, IMPACT_SINCE   # noqa: F401
+from .lifecycle import ARCHIVE_DAYS, STALE_DAYS, VERIFY_DAYS, OBSERVE  # noqa: F401
 from . import sources                                   # noqa: F401
 from .sources import LEVELS                             # noqa: F401
 
@@ -27,5 +28,6 @@ __all__ = [
     'FIELD_MAP',
     'AUTOMATIONS', 'PROMPT_ANCHORS',
     'LEGACY_WEEKS', 'JUDGE_SINCE', 'IMPACT_SINCE',
+    'ARCHIVE_DAYS', 'STALE_DAYS', 'VERIFY_DAYS', 'OBSERVE',
     'sources', 'LEVELS',
 ]

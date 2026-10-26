@@ -33,11 +33,11 @@
 - `pkb/domain/`：blacklist（`BLACK`／`BAD_SUBJECT`／`DOC_MUST_MENTION`／`is_bad`）／fields（五领域等枚举）／chains（`FIELD_MAP`）／legacy（`LEGACY_WEEKS`）。**口径只能住这里**。
 - `pkb/checks/`：**9 项** + `REGISTRY`（`Spec(name, module, needs_all, flags, fixable)`）。**注册表即清单**，不再按文件名发现；`run()` 返回 `Result`、不打印、不 `sys.exit`。10-26 新增 `prompts.py`＝提示词本体守门（现行唯一／命令真实／引用可达／不直调／抬头自洽），口径（自动化 ID 名单、必含锚点）在 `domain/automations.py`；**它读不到线上跑的那份**，存档与自动化配置是否一致仍要人核。`docs` 是**包**（10-26 由 626 行单文件拆成 9 个，最长 114 行；按「被核对对象」分组 declared／consistency／ledger／expert_pkg／hygiene／dnsource／literals ＋ `_state`，15 项检查输出逐字不变；执行顺序即报告顺序，**不许重排**）。
 - **`check_health.py`（10-25 新增）**：采集健康三分状态——`正常`／`已跑但 0 新增`（没采到，别重跑自动化）／`根本没跑`（超 1 天节拍）。另交叉核对「采集灯 vs 日志」（矛盾即 FAIL）与「0 也写 0」（**固定生效日 2026-10-24**，更早的 `—` 只提示；不用滑动窗口，否则违规拖两周自动消失）。
-- `pkb/actions/`：8 个动作 + `_proc`（`sh`／`capture` 用 `redirect_stdout` 抓子步骤数字）。
+- `pkb/actions/`：10 个动作 + `_proc`（`sh`／`capture` 用 `redirect_stdout` 抓子步骤数字）。
 - **摘要行契约**：`Result.summary` 就是 `▸摘要`；明细在 `Result.lines`，打多少由 `actions/check.py` 一层决定（`--only`／`--full`）。
-- 动作 8 个：`status／check／fix／plan／week／link／sources／list`（`link` 原叫 `export`，10-25 晚改）。**一模块一动作，文件名即动作名，下划线开头是内部件**（`_proc`／`_snapshot`）；`run.py` 的 `ACTIONS` 与 `pkb/actions/*.py` 由 `test_smoke` 钉住一一对应，`list` 从包里发现模块不手写名单。参数按**真注册**判定，无认领 **exit 2** 并明说结论不含该窗口。扩展方式见 AGENTS 第十节四条（改注册表，不靠命名）。
+- 动作 10 个：`status／check／fix／plan／week／fetch／ledger／link／sources／list`（`link` 原叫 `export`，10-25 晚改；`ledger` 10-26 增）。**一模块一动作，文件名即动作名，下划线开头是内部件**（`_proc`／`_snapshot`）；`run.py` 的 `ACTIONS` 与 `pkb/actions/*.py` 由 `test_smoke` 钉住一一对应，`list` 从包里发现模块不手写名单。参数按**真注册**判定，无认领 **exit 2** 并明说结论不含该窗口。扩展方式见 AGENTS 第十节四条（改注册表，不靠命名）。
 - `check_docs` 新增**口径单源扫描**：`ast` 取代码里的字符串常量，与 `pkb.domain.__all__` 现读的词典比对，命中即 exit 1；`REQUIRED_FIELDS`（字段名＝读数据的键）排除。词典不另写，domain 加一项自动覆盖。
-- `tests/`（**169 条**）：`test_md`（解析）／`test_rules`（口径＋扫描器自测）／`test_health`（三分状态、灯矛盾、无轮次、0也写0）／`test_link`（专家包四态、三类差异、拒绝删除、force 后入口可跑）／`test_weeks`（**同分裁决：同批模板化标题各归各行**、真合并须写「合并」二字）／`test_judgments`（编号可回原文）／`test_fetch`（切小节、抽正文、认附件、分级、幂等）／`test_views`（`（待补全）`必算未覆盖）／`test_signals`（坏周号抛错不静默、断档四档边界）／`test_analysis`（字数口径）／`test_structure`（断链过滤三侧）／`test_docs`（log 新旧分界、类型白名单）／`test_ledger`（台账 T- 行只能住两节、列数对齐、编号唯一、跨节同号不算重复）／`test_prompts`（五条断言各自的反例＋两条「不能误伤」：禁令里的 `tools/xxx.py` 不算直调、模板占位链接放过）／`test_smoke`（`Result` 契约、非法输入是 `BAD_INPUT`、导入无副作用、分层不反向、checks 不 `sys.exit`（**rglob，包内也查**）、**单函数 ≤50 行**、**动作模块↔ACTIONS 一一对应**）。
+- `tests/`（**183 条**）：`test_md`（解析）／`test_rules`（口径＋扫描器自测）／`test_health`（三分状态、灯矛盾、无轮次、0也写0）／`test_link`（专家包四态、三类差异、拒绝删除、force 后入口可跑）／`test_weeks`（**同分裁决：同批模板化标题各归各行**、真合并须写「合并」二字）／`test_judgments`（编号可回原文）／`test_fetch`（切小节、抽正文、认附件、分级、幂等）／`test_views`（`（待补全）`必算未覆盖）／`test_signals`（坏周号抛错不静默、断档四档边界）／`test_analysis`（字数口径）／`test_structure`（断链过滤三侧）／`test_docs`（log 新旧分界、类型白名单）／`test_ledger`（T- 行只能住两节、列数对齐、编号唯一；生命周期四档边界；清理动作 dry-run／归档搬行／幂等／归档后结构仍过）／`test_rules` 里的结构常量四条（节数写错要报、卡数写错要报、句子被删要报、正确时给实测值）／`test_prompts`（五条断言各自的反例＋两条「不能误伤」：禁令里的 `tools/xxx.py` 不算直调、模板占位链接放过）／`test_smoke`（`Result` 契约、非法输入是 `BAD_INPUT`、导入无副作用、分层不反向、checks 不 `sys.exit`（**rglob，包内也查**）、**单函数 ≤50 行**、**动作模块↔ACTIONS 一一对应**）。
 - **CI（10-25 挂上）**：`.github/workflows/ci.yml`，每次 push/PR 跑 pyflakes ＋ **空库** pytest（`POLICY_KB_VAULT` 指空目录＝最强契约输入，六项检查全走「文件不存在」分支）。CI **不跑** `run.py check`（要真库，守门人是体检自动化）。
 - `fix` 只修快照、frontmatter 数值、唯一相似断链（≥0.85 单候选）、黑名单来源、副本同步；跳过 log.md；多候选不猜。
 
@@ -57,7 +57,7 @@
 
 ## 六、三页分工
 
-采集日志管「采到哪天」（**0 也写 0，禁 `—` 与留空**）／运行状态管「跑没跑」（灯）／任务台账管「修没修」（🆕→🟡→⏳→✅／⛔／🚫，只改状态不删行）。台账含三个游标（断档补采、存量队列、清欠进度）。`plan_backlog` 常数 `STOCK_GAP=14／STOCK_BATCH=14／GAP_BATCH=2／GAP_TRIGGER=3／VIEW_DAILY=3／VIEW_WEEKLY=5／CLAIM_PER_CHECK=1`，**领取闸门＝体检节拍**。体检产出＝三页，须写「本期释放了哪页哪批」。
+采集日志管「采到哪天」（**0 也写 0，禁 `—` 与留空**）／运行状态管「跑没跑」（灯）／任务台账管「修没修」（🆕→🟡→⏳→✅／⛔／🚫，只改状态不删行）。台账含三个游标（断档补采、存量队列、清欠进度）。**台账的生命周期由 `run.py ledger` 推**（10-26 增）：三档到期日住 `domain/lifecycle.py`（✅ 90 天归档／🟡 3 天退回／⏳ 7 天待验过期／备注「观察窗口」到期），`check_docs` 的 `check_ledger_hygiene` 只报不阻断、`run.py ledger --apply` 才搬行；**默认 dry-run + 幂等**，归档＝整行进第六节 + 表下留汇总，不删行。`plan_backlog` 常数 `STOCK_GAP=14／STOCK_BATCH=14／GAP_BATCH=2／GAP_TRIGGER=3／VIEW_DAILY=3／VIEW_WEEKLY=5／CLAIM_PER_CHECK=1`，**领取闸门＝体检节拍**。体检产出＝三页，须写「本期释放了哪页哪批」。
 
 **台账结构有判据（10-26 增）**：`check_docs` 的 `check_ledger_shape` 判三条——T- 行只能住「未闭环项」（8 列）与「关闭记录」（5 列）、列数＝表头列数、未闭环项内编号唯一（跨节同号不算重复，否则会逼人删归档行）。起因是两条记录被粘成一行，`plan` 按**行首**取编号，后半条静默消失两天没人发现。**列数是最灵敏的探针**——两条粘一行必然多出列，判形态不会被措辞骗。另：存量队列「剩余天数」＝今天−已补至（未开补用首次空白日、含头含尾），是相对量、每天自然 +1，体检核的是「已补至前移后它降没降」，不是绝对值。
 

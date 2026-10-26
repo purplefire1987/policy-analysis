@@ -13,6 +13,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from pkb.checks.docs import _state as S            # noqa: E402
+from pkb.checks.docs import consistency as C      # noqa: E402
 from pkb.domain import (BLACK, BAD_SUBJECT, is_bad, DOMAINS, STAT_DOMAINS,  # noqa: E402
                         IMPACTS, STATUSES, REQUIRED_FIELDS, FIELD_MAP, LEGACY_WEEKS,
                         JUDGE_SINCE, IMPACT_SINCE, ANALYSIS_TYPES, ANALYSIS_SPINE,
@@ -159,3 +161,38 @@ class TestDomainGuard(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+def _const_check(agents):
+    """跑一次结构常量判据，返回 (errors, oks)。"""
+    S.rep.errors.clear()
+    S.rep.warns.clear()
+    S.rep.oks.clear()
+    C.check_structure_numbers({'AGENTS': agents})
+    return [m for _i, m in S.rep.errors], list(S.rep.oks)
+
+
+class Test结构常量(unittest.TestCase):
+    """「结构常量」是全库唯一被允许写死数字的一句，写错必须报。
+
+    2026-10-26 审计发现它写着「7 节」而周观点早已八节——**没人拿它跟模板比**。
+    判据写好后又发现第一版正则没穿过 `**结构常量**（…）`，四项比对一条都没跑，
+    却打印「一致」：**判据静默失效比文档写错更糟**。所以这里连「取不到就报错」一起测。
+    """
+
+    def test_节数写错要报(self):
+        errs, _o = _const_check('- **结构常量**（33 张产业卡、15 条索引链、七节、八字段）')
+        self.assertTrue(any('周观点节数' in e for e in errs), errs)
+
+    def test_卡数写错要报(self):
+        errs, _o = _const_check('- **结构常量**（32 张产业卡、15 条索引链、八节、八字段）')
+        self.assertTrue(any('张产业卡' in e for e in errs), errs)
+
+    def test_句子被删要报而不是放过(self):
+        errs, _o = _const_check('这句话没了')
+        self.assertTrue(any('无法校验' in e for e in errs), errs)
+
+    def test_正确写法不报且给出实测值(self):
+        errs, oks = _const_check('- **结构常量**（33 张产业卡、15 条索引链、八节、八字段）')
+        self.assertEqual(errs, [])
+        self.assertTrue(any('周观点节数 8' in o for o in oks), oks)

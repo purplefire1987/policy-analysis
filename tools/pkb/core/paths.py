@@ -47,6 +47,7 @@ JUDGE_LEDGER = OVERVIEW_DIR / '判断台账.md'      # 管「判没判」
 COLLECT_LOG = OVERVIEW_DIR / '采集日志.md'       # 管「采到哪天」
 CHECK_REPORT = OVERVIEW_DIR / '体检报告.md'
 WEEK_TEMPLATE = TEMPLATE_DIR / '周观点模板.md'
+SIGNAL_TEMPLATE = TEMPLATE_DIR / '政策信号汇总模板.md'
 
 # 提示词存档在库外（工作区），由 check_prompts 守「现行唯一」与引用有效性。
 # 放在这里而不是库内路径区：它不在 VAULT 里，混排会让人以为是库内文档。
