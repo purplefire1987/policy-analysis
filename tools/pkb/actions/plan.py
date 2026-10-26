@@ -9,11 +9,11 @@
 它只读不写（唯一例外：什么都不改，连台账也不动）。输出的每一段都直接可执行，
 并给出可以原样粘回任务台账的表格行，避免手工算日期算错。
 
-用法：
-  python3 plan_backlog.py                 # 本轮清单（采集开工前跑）
-  python3 plan_backlog.py --round 34      # 只影响标题里的轮次号
-  python3 plan_backlog.py --json          # 机器可读（供体检/专家内联调用）
-  python3 plan_backlog.py --top 8         # 存量观点清单最多列几条（默认 8）
+用法（统一走入口）：
+  run.py plan                 # 本轮清单（采集开工前跑）
+  run.py plan --round 34      # 只影响标题里的轮次号
+  run.py plan --json          # 机器可读（供体检/专家内联调用）
+  run.py plan --top 8         # 存量观点清单最多列几条（默认 8）
 
 退出码：恒 0。派活器不阻断——结构/周观点/信号是否合格，仍由四个校验脚本判定。
 """

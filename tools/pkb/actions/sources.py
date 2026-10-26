@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """来源违规清理：删除黑名单链接，主体本身违规的整行删，删后不足 3 类主体的节降 B 档。
 
-用法：
-  python3 clean_sources.py --dry-run    # 只报告
-  python3 clean_sources.py --apply      # 执行
+用法（统一走入口）：
+  run.py sources --dry-run    # 只报告（默认行为）
+  run.py sources --apply      # 执行
 
 处置分四类：
   R1 表格行·主体本身违规（今日头条/网易号/搜狐号/百家号/公众号/界面新闻/中华网）→ 整行删

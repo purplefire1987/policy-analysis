@@ -86,7 +86,7 @@ class TestLevel(unittest.TestCase):
 
     def test_黑名单一律非一手(self):
         self.assertEqual(sources.level('https://www.jiemian.com/article/1.html'), '非一手')
-        self.assertFalse(sources.archivable('https://xueqiu.com/1'))
+        self.assertEqual(sources.level('https://xueqiu.com/1'), '非一手')
 
 
 class TestNaming(unittest.TestCase):

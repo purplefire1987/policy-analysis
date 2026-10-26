@@ -68,11 +68,6 @@ def level(url):
     return '非一手'
 
 
-def archivable(url):
-    """这一条值不值得进一手存档区。"""
-    return level(url) != '非一手'
-
-
 def why(url):
     """一句话说明分级理由——存档头和抓取报告都用它，免得两处措辞不一致。"""
     lv, h = level(url), host(url)

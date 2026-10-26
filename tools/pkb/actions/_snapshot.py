@@ -2,9 +2,8 @@
 # -*- coding: utf-8 -*-
 """刷新知识库里的「统计快照」，避免手写数字长期漂移。
 
-用法：
-    python3 tools/refresh_snapshot.py            # 刷新并写入
-    python3 tools/refresh_snapshot.py --dry-run  # 只看差异，不写
+**它不是独立动作**：`run.py check` 的第 0 步就是这里（以 dry-run 调用，把差异并进 `fix`）。
+单独跑没有入口——`run.py` 不暴露它，因为快照不是人该记的事：结构一变，数字就该跟着变。
 
 它会做三件事，全部作用在 index.md 一处：
 1. 扫描 wiki/政策卡片/，统计产业卡数、每张卡的政策数（取 frontmatter `政策数`）；

@@ -12,12 +12,12 @@
 再按行号读那一段（Read 带 offset/limit），
 于是一个 30 万字符的库，一次预取只要一两千字符。
 
-用法
+用法（统一走入口）
 ----
-    python3 week_sources.py 2026-W42            # 索引（带行号范围）
-    python3 week_sources.py --week 2026-W42     # 同上
-    python3 week_sources.py 2026-W42 --full     # 连正文一起打印（小周可用）
-    python3 week_sources.py 2026-W42 --json     # 给程序用
+    run.py week 2026-W42            # 索引（带行号范围）
+    run.py week --week 2026-W42     # 同上
+    run.py week 2026-W42 --full     # 连正文一起打印（小周可用）
+    run.py week 2026-W42 --json     # 给程序用
 
 恒 exit 0：这是取素材的，不是校验器。窗口内为空会明说，不静默。
 """

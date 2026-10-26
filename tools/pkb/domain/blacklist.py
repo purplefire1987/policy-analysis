@@ -4,12 +4,12 @@
 
 为什么单列一个模块而不进 core：这是**口径**（什么来源算违规），不是机制。
 core 的原则是「口径不进共用层」，所以黑名单住在 domain，
-由 check_docs.py（查）与 clean_sources.py（清）共同 import——
+由 `check_docs`（查）与 `run.py sources`（清）共同 import——
 两处各写一份清单的历史教训：2026-10-24 清理时发现两份名单已经漂移
-（check_docs 有 14 项、clean_sources 只有 10 项，漏了界面新闻/雪球/股吧）。
+（查的那份 14 项、清的那份只有 10 项，漏了界面新闻/雪球/股吧）。
 
 改这里 = 改全库口径；AGENTS.md 黑名单节的「域名自查清单」表是它的文档副本，
-由 check_docs.py 的 check_blacklist 负责核对文档侧是否还在用旧口径。
+由 `check_docs` 的 check_blacklist 负责核对文档侧是否还在用旧口径。
 """
 
 # 域名/路径片段 → 违规原因。命中方式：子串包含（`k in url`）。
