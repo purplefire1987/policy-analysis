@@ -9,7 +9,7 @@
 - **git（10-25 建立）**：只在工作区 init，**资料库未纳入版本控制**。`归档/` 在 `.gitignore` 里（含 .obsidian 插件二进制）。
 - **远程（10-25 已连）**：`git@github.com:purplefire1987/policy-analysis.git`（私有），`origin/main` 跟踪已建，12 个提交（首个是 GitHub auto-init 的 README，第二个起是重构）。SSH 密钥 `~/.ssh/id_ed25519`（无口令，供自动化推送），公钥已贴账号级 SSH keys，`ssh -T` 返回 `Hi purplefire1987!`。**推送走 SSH 不走 MCP**：connector 令牌不能建库（403 `Resource not accessible by integration`），且 `push_files` 只能落成单个提交、要把 445 KB 内容全过一遍上下文——只适合改一两个文件。
 - **rebase 过的坑**：远端 auto-init 的 `README.md` 与本地同名，rebase 时唯一冲突；两版合并保留（远端那句「管理一个政策知识库…」是仓库描述，别丢）。
-- **工作区（10-25 整理后）**：顶层只剩 `tools/`、`automation-prompts/`、`.workbuddy/`、`归档/`。`归档/备份/` 放 8 个 `政策库备份-*`；`归档/旧版/` 放 3 个 `政策库归档-*`（旧版方案与模板／已合并页面／log长条目）；`归档/散件/` 放 log 备份、周观点 W42 补节前快照与样例、空的来源清理报告。**归档只读，不要再往里写。**
+- **工作区（10-26 清理后）**：顶层只有 `README.md`、`tools/`、`automation-prompts/`、`归档/`（另有 `.github`、`.gitignore`、`.workbuddy`）。`automation-prompts/` 顶层＝三个自动化的**现行**提示词（名称+ID+日期），`旧版/` 放历史版本；`归档/备份/` 是 4 份 `政策库备份-*`——**资料库无 git，这是唯一历史兜底，别删**。原 `归档/散件`、`归档/旧版` 已于 10-26 移入废纸篓。**归档只读，不要再往里写。**
 - **专家包入口是符号链接，不是副本（10-25 晚改）**：`~/.workbuddy/plugins/.../gov-policy-analyst/skills/policy-kb-tools/scripts` → `/Users/Mr_Zhou/WorkBuddy/2026-09-23-07-58-53/tools`（绝对符号链接）。**物理上只有一份代码，所以没有"同步"这一步，也没有漂移**；`export` 动作已更名 `link`（`pkg/actions/link.py`），`MANIFEST.json` 已废弃删除。`check_docs.check_expert_scripts()` 判**形态**（`core/expert.py` 的四种：link／copy／alien／missing），实体副本即 exit 1 并列出差异。`link` 遇到副本里有改动会拒绝删除，须 `--force`。代价：专家包不自包含，整包拷走跑不起来（本机个人专家，可接受）。
 - **已归档勿引用勿重建**：`政策跟踪运营方案`、`政策链总览`、`主题词表`。
 
@@ -31,13 +31,13 @@
 - **`core` 的规则（10-25 修订）**：`core` **不含口径**（名单/枚举/判据），但**可以有目录名与结构名**（`wiki/政策卡片`、`### 日期 · 标题`）——前者是「规则是什么」，后者是「数据在哪」。原文「不许出现『政策』二字」与必需的路径常量直接冲突，已废。判据是「与 domain 某取值同值」，不是「出现某个词」。
 - `pkb/core/`：paths（唯一路径，`TOOLS = parents[2]`）／fs（`py_files(TOOLS)` 是「哪些文件该导出/校验」唯一出口）／fm／md／report（`Verdict` 枚举 + `Result`，**`summary` 无默认值**→「有退出码没摘要」写不出来；`Reporter.to_lines()`）。
 - `pkb/domain/`：blacklist（`BLACK`／`BAD_SUBJECT`／`DOC_MUST_MENTION`／`is_bad`）／fields（五领域等枚举）／chains（`FIELD_MAP`）／legacy（`LEGACY_WEEKS`）。**口径只能住这里**。
-- `pkb/checks/`：**8 项** + `REGISTRY`（`Spec(name, module, needs_all, flags, fixable)`）。**注册表即清单**，不再按文件名发现；`run()` 返回 `Result`、不打印、不 `sys.exit`。`docs` 是**包**（10-26 由 626 行单文件拆成 9 个，最长 114 行；按「被核对对象」分组 declared／consistency／ledger／expert_pkg／hygiene／dnsource／literals ＋ `_state`，15 项检查输出逐字不变；执行顺序即报告顺序，**不许重排**）。
+- `pkb/checks/`：**9 项** + `REGISTRY`（`Spec(name, module, needs_all, flags, fixable)`）。**注册表即清单**，不再按文件名发现；`run()` 返回 `Result`、不打印、不 `sys.exit`。10-26 新增 `prompts.py`＝提示词本体守门（现行唯一／命令真实／引用可达／不直调／抬头自洽），口径（自动化 ID 名单、必含锚点）在 `domain/automations.py`；**它读不到线上跑的那份**，存档与自动化配置是否一致仍要人核。`docs` 是**包**（10-26 由 626 行单文件拆成 9 个，最长 114 行；按「被核对对象」分组 declared／consistency／ledger／expert_pkg／hygiene／dnsource／literals ＋ `_state`，15 项检查输出逐字不变；执行顺序即报告顺序，**不许重排**）。
 - **`check_health.py`（10-25 新增）**：采集健康三分状态——`正常`／`已跑但 0 新增`（没采到，别重跑自动化）／`根本没跑`（超 1 天节拍）。另交叉核对「采集灯 vs 日志」（矛盾即 FAIL）与「0 也写 0」（**固定生效日 2026-10-24**，更早的 `—` 只提示；不用滑动窗口，否则违规拖两周自动消失）。
 - `pkb/actions/`：8 个动作 + `_proc`（`sh`／`capture` 用 `redirect_stdout` 抓子步骤数字）。
 - **摘要行契约**：`Result.summary` 就是 `▸摘要`；明细在 `Result.lines`，打多少由 `actions/check.py` 一层决定（`--only`／`--full`）。
 - 动作 8 个：`status／check／fix／plan／week／link／sources／list`（`link` 原叫 `export`，10-25 晚改）。**一模块一动作，文件名即动作名，下划线开头是内部件**（`_proc`／`_snapshot`）；`run.py` 的 `ACTIONS` 与 `pkb/actions/*.py` 由 `test_smoke` 钉住一一对应，`list` 从包里发现模块不手写名单。参数按**真注册**判定，无认领 **exit 2** 并明说结论不含该窗口。扩展方式见 AGENTS 第十节四条（改注册表，不靠命名）。
 - `check_docs` 新增**口径单源扫描**：`ast` 取代码里的字符串常量，与 `pkb.domain.__all__` 现读的词典比对，命中即 exit 1；`REQUIRED_FIELDS`（字段名＝读数据的键）排除。词典不另写，domain 加一项自动覆盖。
-- `tests/`（**145 条**）：`test_md`（解析）／`test_rules`（口径＋扫描器自测）／`test_health`（三分状态、灯矛盾、无轮次、0也写0）／`test_link`（专家包四态、三类差异、拒绝删除、force 后入口可跑）／`test_weeks`（**同分裁决：同批模板化标题各归各行**、真合并须写「合并」二字）／`test_judgments`（编号可回原文）／`test_fetch`（切小节、抽正文、认附件、分级、幂等）／`test_views`（`（待补全）`必算未覆盖）／`test_signals`（坏周号抛错不静默、断档四档边界）／`test_analysis`（字数口径）／`test_structure`（断链过滤三侧）／`test_docs`（log 新旧分界、类型白名单）／`test_smoke`（`Result` 契约、非法输入是 `BAD_INPUT`、导入无副作用、分层不反向、checks 不 `sys.exit`（**rglob，包内也查**）、**单函数 ≤50 行**、**动作模块↔ACTIONS 一一对应**）。
+- `tests/`（**162 条**）：`test_md`（解析）／`test_rules`（口径＋扫描器自测）／`test_health`（三分状态、灯矛盾、无轮次、0也写0）／`test_link`（专家包四态、三类差异、拒绝删除、force 后入口可跑）／`test_weeks`（**同分裁决：同批模板化标题各归各行**、真合并须写「合并」二字）／`test_judgments`（编号可回原文）／`test_fetch`（切小节、抽正文、认附件、分级、幂等）／`test_views`（`（待补全）`必算未覆盖）／`test_signals`（坏周号抛错不静默、断档四档边界）／`test_analysis`（字数口径）／`test_structure`（断链过滤三侧）／`test_docs`（log 新旧分界、类型白名单）／`test_prompts`（五条断言各自的反例＋两条「不能误伤」：禁令里的 `tools/xxx.py` 不算直调、模板占位链接放过）／`test_smoke`（`Result` 契约、非法输入是 `BAD_INPUT`、导入无副作用、分层不反向、checks 不 `sys.exit`（**rglob，包内也查**）、**单函数 ≤50 行**、**动作模块↔ACTIONS 一一对应**）。
 - **CI（10-25 挂上）**：`.github/workflows/ci.yml`，每次 push/PR 跑 pyflakes ＋ **空库** pytest（`POLICY_KB_VAULT` 指空目录＝最强契约输入，六项检查全走「文件不存在」分支）。CI **不跑** `run.py check`（要真库，守门人是体检自动化）。
 - `fix` 只修快照、frontmatter 数值、唯一相似断链（≥0.85 单候选）、黑名单来源、副本同步；跳过 log.md；多候选不猜。
 
