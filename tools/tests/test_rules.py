@@ -19,7 +19,7 @@ from pkb.checks.docs import consistency as C      # noqa: E402
 from pkb.core import AGENTS                       # noqa: E402
 from pkb.domain import (BLACK, BAD_SUBJECT, is_bad, DOMAINS, STAT_DOMAINS,  # noqa: E402
                         IMPACTS, STATUSES, REQUIRED_FIELDS, FIELD_MAP, LEGACY_WEEKS,
-                        JUDGE_SINCE, IMPACT_SINCE, ANALYSIS_TYPES, ANALYSIS_SPINE,
+                        IMPACT_SINCE, ANALYSIS_TYPES, ANALYSIS_SPINE,
                         ANALYSIS_WORD_LIMIT, STANCES, STANCE_MIN)
 
 
@@ -51,29 +51,30 @@ class TestLegacy(unittest.TestCase):
         for wk in ('2026-W42', '2026-W43', '2026-W52'):
             self.assertNotIn(wk, LEGACY_WEEKS)
 
-    def test_影响列生效周与第八节同期(self):
-        # 两处都是固定时点，不是滑动窗口；同期生效的理由：影响档位要挂第八节编号
+    def test_影响列生效周是固定时点(self):
+        # 固定时点，不是滑动窗口：滑动窗口会让旧篇随时间自动合格。
+        # 2026-10-28 撤掉判断编号后这一条仍要守——三档本身还在判。
         self.assertEqual(IMPACT_SINCE, '2026-W43')
-        self.assertEqual(IMPACT_SINCE, JUDGE_SINCE)
 
 
-class TestJudgeSection(unittest.TestCase):
-    """第八节「可证伪判断」的生效周。
+class Test必备节(unittest.TestCase):
+    """必备节只剩第二节（2026-10-28 撤掉第八节这条线）。
 
-    判据必须是**固定时点**：若改用「最近 N 周」的滑动窗口，新建的周会随时间
-    自动豁免，和 health 里「0 也写 0」踩的是同一个坑（2026-10-25）。
+    保留这条断言的理由：**撤线不等于放宽结构**。第八节不再是新篇的必需品，
+    但「第二节在不在」仍要拦；且 `check_week_sections` 仍按模板逐节比对，
+    少写任何一节都会被那一项抓住。
     """
     OLD = '## 二、本周政策信号\n## 七、下周关注\n'
 
-    def test_旧篇不追溯第八节(self):
+    def test_缺第二节要报(self):
         from pkb.checks.weeks import _missing_head
-        self.assertIsNone(_missing_head(self.OLD, '2026-W42'))
+        self.assertEqual(_missing_head('## 七、下周关注\n', '2026-W50'), '二、本周政策信号')
 
-    def test_生效周起缺第八节(self):
+    def test_第八节不再是必需品(self):
         from pkb.checks.weeks import _missing_head
-        self.assertEqual(_missing_head(self.OLD, JUDGE_SINCE), '八、本周可证伪判断')
+        self.assertIsNone(_missing_head(self.OLD, '2026-W50'))
 
-    def test_有第八节即通过(self):
+    def test_有第八节也不报(self):
         from pkb.checks.weeks import _missing_head
         text = '## 二、本周政策信号\n## 八、本周可证伪判断\n'
         self.assertIsNone(_missing_head(text, '2026-W50'))
@@ -183,7 +184,8 @@ class Test结构常量(unittest.TestCase):
     """
 
     def test_节数写错要报(self):
-        errs, _o = _const_check('- **结构常量**（33 张产业卡、15 条索引链、七节、七字段）')
+        # 2026-10-28 起周观点是七节，八节（带「可证伪判断」的那版）已撤
+        errs, _o = _const_check('- **结构常量**（33 张产业卡、15 条索引链、八节、七字段）')
         self.assertTrue(any('周观点' in e and '节' in e for e in errs), errs)
 
     def test_卡数写错要报(self):
@@ -195,7 +197,7 @@ class Test结构常量(unittest.TestCase):
         self.assertTrue(any('无法校验' in e for e in errs), errs)
 
     def test_正确写法不报且给出实测值(self):
-        errs, oks = _const_check('- **结构常量**（33 张产业卡、15 条索引链、八节、七字段）')
+        errs, oks = _const_check('- **结构常量**（33 张产业卡、15 条索引链、七节、七字段）')
         self.assertEqual(errs, [])
         self.assertTrue(any('张产业卡 33' in o for o in oks), oks)
 

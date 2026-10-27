@@ -16,17 +16,18 @@ import datetime
 import difflib
 import re
 
-from pkb.core import CARD_DIR, WEEKLY_DIR, Result, Verdict, parse_fm, read
-from pkb.domain import (DRAFT_SINCE, FIELD_MAP, IMPACT_SINCE, IMPACTS, JUDGE_SINCE,
-                        LEGACY_WEEKS, STAT_DOMAINS)
+from pkb.core import CARD_DIR, WEEKLY_DIR, Result, Verdict
+from pkb.domain import FIELD_MAP, IMPACT_SINCE, IMPACTS, LEGACY_WEEKS, STAT_DOMAINS
 
 
 STOPWORDS = ['关于', '的通知', '通知', '的意见', '意见', '实施方案', '方案', '公告',
              '决定', '办法', '规定', '若干', '进一步', '加强', '推动', '促进', '做好',
              '有关', '工作', '实施', '开展', '印发', '发布', '年度', '我国', '国家']
 
-# 判断编号形态（第八节第一列，与速览表「影响」列括号内的引用同一写法）。
-# 这是格式而不是口径：口径（哪周起生效）在 domain.legacy。
+# 判断编号形态：**只为兼容历史篇**（W43 及更早的「影响」列写过 `中（J2026-W43-1）`）。
+# 2026-10-28 取消周观点的可证伪判断与判断台账，新篇不再产生编号；这里保留形态，
+# 是为了让旧篇的校验口径倒不回去，而不是给新篇留口子——新篇写编号会因为
+# 「第八节表内没有」直接报错。
 JUDGE_ID = r'J\d{4}-W\d{2}-\d+'
 
 
@@ -325,28 +326,6 @@ def check_week(week_str, verbose=True):
     }, out
 
 
-def draft_issues(files):
-    """`DRAFT_SINCE` 起：定稿的周观点要能回答「谁定的稿」。
-
-    病根不是缺字段，是「人改一次就覆盖」——三个月后分不清哪句是机器写的、哪句是人拍的，
-    而这两者的可信度完全不同。脚本只管两个格子填没填，内容归人判。
-    W43 及更早不补：事后写「定稿人」等于伪造当时谁定的稿。
-    """
-    out = []
-    for f in files:
-        wk = f.stem.replace('周观点-', '')
-        if wk < DRAFT_SINCE:
-            continue
-        fm, _body = parse_fm(read(f, ''))
-        state = str(fm.get('状态', '')).strip()
-        if state not in ('草稿', '定稿'):
-            out.append((wk, '缺 `状态: 草稿｜定稿`'))
-        elif state == '定稿':
-            out += [(wk, f'标了定稿但缺 `{k}`') for k in ('定稿人', '定稿时间')
-                    if not str(fm.get(k, '')).strip()]
-    return out
-
-
 def run_all():
     files = sorted(WEEKLY_DIR.glob('周观点-*.md'))
     tbl = []
@@ -379,29 +358,22 @@ def run_all():
     live = [t for t in tbl if not t[7]]
     bad = [t[0] for t in live if t[6] is Verdict.FAIL]
     latest = live[-1] if live else None
-    drafts = draft_issues(files)
-    if drafts:
-        worst = Verdict.FAIL
-        lines += ['', '定稿痕（`状态`／`定稿人`／`定稿时间`）：']
-        lines += [f'  · {wk} {msg}' for wk, msg in drafts]
     summary = (f'{len(tbl)} 周（有效 {len(live)}／历史归档 {len(tbl) - len(live)}）：'
                + (f'最新 {latest[0]} 覆盖率 {latest[5]:.1f}%' if latest else '无有效周')
-               + (f'；未过 {len(bad)} 周（{",".join(bad)}）' if bad else '；全部通过')
-               + (f'；定稿痕缺 {len(drafts)} 处' if drafts else ''))
+               + (f'；未过 {len(bad)} 周（{",".join(bad)}）' if bad else '；全部通过'))
     return Result(worst, summary, lines)
 
 
 def _missing_head(text, week):
     """返回缺的必备节标题；都不缺返回 None。
 
-    第二节按全名判；第八节只判编号 `## 八、`——标题措辞可能微调，
-    编号变了才真是结构变了。生效周用 JUDGE_SINCE 固定，不做滑动窗口
-    （滑动窗口会让新建的周随时间自动豁免）。
+    只查第二节（按全名）。第八节「本周可证伪判断」2026-10-28 撤线，历史篇留着、
+    新篇不再要求——`check_week_sections` 仍按模板逐节比对，所以「少了哪一节」
+    不会因为这里只管一节而放过。
+    `week` 参数保留：调用方都带周号，判据未来若再收紧不必改签名。
     """
     if '## 二、本周政策信号' not in text:
         return '二、本周政策信号'
-    if week >= JUDGE_SINCE and '## 八、' not in text:
-        return '八、本周可证伪判断'
     return None
 
 
@@ -427,7 +399,7 @@ def run(argv=None):
         if lack:
             return Result(Verdict.FAIL,
                           f'{args.week} 结构缺节：无「{lack}」  ❌',
-                          [f'✗ 缺「{lack}」节：模板要求该节必在（第八节自 {JUDGE_SINCE} 起），',
+                          [f'✗ 缺「{lack}」节：模板要求该节必在，',
                            f'  只有 LEGACY_WEEKS 名单内的归档周可豁免，{args.week} 不在名单里。'])
 
     try:

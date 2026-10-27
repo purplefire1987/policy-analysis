@@ -43,6 +43,15 @@ SIGNAL_A = """# 政策信号汇总：金融
 - **信号主题**：提到互换便利的后续安排
 """
 
+NOTE_A = """---
+类型: 灵感
+标题: 房车营地是个新基建切口
+日期: 2026-10-25
+---
+
+正文：营地、驿站、服务区水电补给，都算延伸。
+"""
+
 CHAIN_A = """# 政策链：金融强国
 
 ## 关联卡片
@@ -56,16 +65,19 @@ class TestQuery(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         root = Path(self.tmp.name)
         self.cards, self.sigs, self.chains = root / '卡片', root / '信号', root / '链'
-        for d in (self.cards, self.sigs, self.chains):
+        self.notes = root / '笔记'
+        for d in (self.cards, self.sigs, self.chains, self.notes):
             d.mkdir()
         (self.cards / '政策卡片-金融.md').write_text(CARD_A, encoding='utf-8')
         (self.sigs / '政策信号-金融.md').write_text(SIGNAL_A, encoding='utf-8')
         (self.chains / '政策链-金融强国.md').write_text(CHAIN_A, encoding='utf-8')
-        self._old = (query.CARD_DIR, query.SIGNAL_DIR, query.CHAIN_DIR)
-        query.CARD_DIR, query.SIGNAL_DIR, query.CHAIN_DIR = self.cards, self.sigs, self.chains
+        (self.notes / '房车营地.md').write_text(NOTE_A, encoding='utf-8')
+        self._old = (query.CARD_DIR, query.SIGNAL_DIR, query.CHAIN_DIR, query.NOTES_DIR)
+        query.CARD_DIR, query.SIGNAL_DIR = self.cards, self.sigs
+        query.CHAIN_DIR, query.NOTES_DIR = self.chains, self.notes
 
     def tearDown(self):
-        query.CARD_DIR, query.SIGNAL_DIR, query.CHAIN_DIR = self._old
+        query.CARD_DIR, query.SIGNAL_DIR, query.CHAIN_DIR, query.NOTES_DIR = self._old
         self.tmp.cleanup()
 
     def call(self, *argv):
@@ -106,6 +118,16 @@ class TestQuery(unittest.TestCase):
     def test_查不到要明说0处(self):
         _, out = self.call('绝不出现的词')
         self.assertIn('0 处', out)
+
+    def test_笔记默认不进检索(self):
+        _, out = self.call('房车')
+        self.assertIn('0 处', out)
+
+    def test_加notes才查人的笔记且标出类型(self):
+        code, out = self.call('房车', '--notes')
+        self.assertEqual(code, 0)
+        self.assertIn('【笔记】', out)
+        self.assertIn('房车营地是个新基建切口', out)
 
     def test_没有条件时打帮助并说明无结论(self):
         code, out = self.call()

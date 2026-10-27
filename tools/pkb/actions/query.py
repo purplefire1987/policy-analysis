@@ -18,32 +18,39 @@
     run.py query --chain 金融强国             # 该链下全部政策小节
     run.py query --chain 金融强国 --since 2026-10-01
     run.py query 稀土 --full                  # 连小节正文一起打
+    run.py query 房车 --notes                 # 连人的笔记（raw/notes）一起查
 
 恒 exit 0：这是取素材的，不是校验器。查不到会明说「0 处」，不静默。
 """
 import argparse
 import re
 
-from pkb.core import CARD_DIR, CHAIN_DIR, SIGNAL_DIR, md_section_lines, read, scan_dated, summary
+from pkb.core import (CARD_DIR, CHAIN_DIR, NOTES_DIR, SIGNAL_DIR,
+                      md_section_lines, read, scan_dated, scan_notes, summary)
 
 DEFAULT_LIMIT = 40
 
 
-def collect():
-    """政策小节与信号条目各扫一遍，统一成一种形状（带文件、行号、卡名）。
+def collect(include_notes=False):
+    """政策小节、信号条目（可选笔记）各扫一遍，统一成一种形状（带文件、行号、卡名）。
 
-    `kind` 分开是因为两者含义不同：政策是已落定的文件，信号是表态。
-    读者一眼要能分清，所以输出里标【政策】/【信号】，不混排成一张表。
+    `kind` 分开是因为三者含义不同：政策是已落定的文件，信号是表态，笔记是**人写的
+    东西**。读者一眼要能分清，所以输出里标【政策】/【信号】/【笔记】，不混排成一张表。
+    笔记默认不进来：它是人的私稿，混进政策检索会让「这条政策库里有没有」变得可疑。
     """
     out = []
     for sec in scan_dated(CARD_DIR):
-        sec['kind'] = '政策'
+        sec.update(kind='政策', dir=CARD_DIR)
         sec['card'] = re.sub(r'^政策卡片-|\.md$', '', sec['file'])
         out.append(sec)
     for sec in scan_dated(SIGNAL_DIR):
-        sec['kind'] = '信号'
+        sec.update(kind='信号', dir=SIGNAL_DIR)
         sec['card'] = re.sub(r'^政策信号-|\.md$', '', sec['file'])
         out.append(sec)
+    if include_notes:
+        for sec in scan_notes(NOTES_DIR):
+            sec.update(kind='笔记', dir=NOTES_DIR, card='')
+            out.append(sec)
     return out
 
 
@@ -58,7 +65,7 @@ def chain_cards(name):
 
 def body_text(sec):
     """小节正文（含标题行）。查询要的是原话，不做摘要——摘要就是判断。"""
-    p = (CARD_DIR if sec['kind'] == '政策' else SIGNAL_DIR) / sec['file']
+    p = sec['dir'] / sec['file']
     lines = read(p, '').split('\n')
     return lines, lines[sec['start'] - 1:sec['end']]
 
@@ -76,7 +83,7 @@ def select(secs, args, cards):
     for sec in secs:
         if cards is not None and sec['kind'] == '政策' and sec['card'] not in cards:
             continue
-        if cards is not None and sec['kind'] == '信号':
+        if cards is not None and sec['kind'] != '政策':
             continue
         if args.since and sec['date'] < args.since:
             continue
@@ -99,8 +106,7 @@ def show(picked, args):
         print('  （0 处。查不到就是查不到——换词、放宽时间窗，或这条政策库里确实没有）')
         return
     for sec, got in picked[:args.limit]:
-        tag = '政策' if sec['kind'] == '政策' else '信号'
-        print(f'\n【{tag}】{sec["date"]} · {sec["title"]}')
+        print(f'\n【{sec["kind"]}】{sec["date"] or "（无日期）"} · {sec["title"]}')
         print(f'    {sec["file"]}:{sec["start"]}-{sec["end"]}'
               + (f'　命中行 {", ".join(map(str, got))}' if got else ''))
         if args.full:
@@ -117,13 +123,14 @@ def run(argv=None):
     ap.add_argument('--since', help='起始日期 YYYY-MM-DD（含）')
     ap.add_argument('--until', help='截止日期 YYYY-MM-DD（含）')
     ap.add_argument('--full', action='store_true', help='连小节正文一起打')
+    ap.add_argument('--notes', action='store_true', help='连 raw/notes 里人的笔记一起查')
     ap.add_argument('--limit', type=int, default=DEFAULT_LIMIT, help=f'最多列几条（默认 {DEFAULT_LIMIT}）')
     ap.add_argument('--limit-chars', type=int, default=800, dest='limit_chars',
                     help='--full 时每条最多字符（默认 800）')
     args = ap.parse_args(list(argv or []))
     args.keyword = (args.keyword_pos or '').strip()
 
-    if not (args.keyword or args.chain or args.since or args.until):
+    if not (args.keyword or args.chain or args.since or args.until) and not args.notes:
         ap.print_help()
         summary('未给检索条件，无结论')
         return 0
@@ -137,13 +144,14 @@ def run(argv=None):
             return 0
         if not cards:
             print(f'⚠ 政策链-{args.chain}.md 的「关联卡片」节没点到任何卡——链是空的')
-    selected = select(collect(), args, cards)
+    selected = select(collect(args.notes), args, cards)
     show(selected, args)
 
     scope = '／'.join(x for x in (
         f'链 {args.chain}' if args.chain else '',
         f'{args.since or "…"}~{args.until or "…"}' if (args.since or args.until) else '',
-        f'词「{args.keyword}」' if args.keyword else '') if x) or '全库'
+        f'词「{args.keyword}」' if args.keyword else '',
+        '含笔记' if args.notes else '') if x) or '全库'
     summary(f'查询 {scope}：命中 {len(selected)} 个小节'
             + (f'（只列 {args.limit} 个）' if len(selected) > args.limit else ''))
     return 0

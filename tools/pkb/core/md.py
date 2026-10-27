@@ -62,6 +62,24 @@ def scan_dated(dirpath):
     return out
 
 
+def scan_notes(dirpath):
+    """扫人的笔记目录：一篇笔记一个文件（整篇就是一段），日期与标题在 frontmatter。
+
+    为什么不套 `scan_dated`：笔记是自由结构，正文里没有 `### 日期 · 标题`，
+    硬套会得出「0 个小节」。而笔记恰恰是最需要被查到的——它不进卡片、不进信号，
+    除了检索之外没有任何入口，进不了结果就等于没写。
+    """
+    from .fm import parse_fm          # 同层导入，放在函数里只为避免模块级循环
+    out = []
+    for p in sorted(dirpath.glob('*.md')):
+        text = p.read_text(encoding='utf-8', errors='ignore')
+        fm, _body = parse_fm(text)
+        out.append({'file': p.name, 'start': 1, 'end': len(text.split('\n')),
+                    'date': str(fm.get('日期', '')).strip(),
+                    'title': str(fm.get('标题', '')).strip() or p.stem})
+    return out
+
+
 def md_section_lines(text, title):
     """取 `## ` 节（标题含 title 即中）到下一个 `## ` 之间的行。
 

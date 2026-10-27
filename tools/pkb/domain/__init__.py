@@ -11,7 +11,7 @@ from .blacklist import (                               # noqa: F401
 )
 from .fields import (                                   # noqa: F401
     DOMAINS, STAT_DOMAINS, IMPACTS, STATUSES, REQUIRED_FIELDS, CARD_SIZE_WARN,
-    JUDGE_STATES, JUDGE_PENDING, ANALYSIS_TYPES, ANALYSIS_WORD_LIMIT, ANALYSIS_SPINE,
+    ANALYSIS_TYPES, ANALYSIS_WORD_LIMIT, ANALYSIS_SPINE,
     STANCES, STANCE_MIN, ARCHIVE_DATE_TOLERANCE,
 )
 # `ledger.py` 的 LEDGER_TYPES／LEDGER_OWNERS **故意不从包里再导出**（2026-10-26）：
@@ -23,7 +23,7 @@ from .fields import (                                   # noqa: F401
 #   需要这两个表的只有 `checks/docs/ledger.py`，它直接 import `pkb.domain.ledger`。
 from .chains import FIELD_MAP                           # noqa: F401
 from .automations import AUTOMATIONS, PROMPT_ANCHORS    # noqa: F401
-from .legacy import LEGACY_WEEKS, JUDGE_SINCE, IMPACT_SINCE, DRAFT_SINCE   # noqa: F401
+from .legacy import LEGACY_WEEKS, IMPACT_SINCE                # noqa: F401
 from .lifecycle import ARCHIVE_DAYS, STALE_DAYS, VERIFY_DAYS, OBSERVE  # noqa: F401
 from . import sources                                   # noqa: F401
 from .sources import LEVELS                             # noqa: F401
@@ -31,12 +31,11 @@ from .sources import LEVELS                             # noqa: F401
 __all__ = [
     'BLACK', 'BAD_SUBJECT', 'DOC_MUST_MENTION', 'is_bad',
     'DOMAINS', 'STAT_DOMAINS', 'IMPACTS', 'STATUSES', 'REQUIRED_FIELDS', 'CARD_SIZE_WARN',
-    'JUDGE_STATES', 'JUDGE_PENDING',
     'ANALYSIS_TYPES', 'ANALYSIS_WORD_LIMIT', 'ANALYSIS_SPINE',
     'STANCES', 'STANCE_MIN', 'ARCHIVE_DATE_TOLERANCE',
     'FIELD_MAP',
     'AUTOMATIONS', 'PROMPT_ANCHORS',
-    'LEGACY_WEEKS', 'JUDGE_SINCE', 'IMPACT_SINCE', 'DRAFT_SINCE',
+    'LEGACY_WEEKS', 'IMPACT_SINCE',
     'ARCHIVE_DAYS', 'STALE_DAYS', 'VERIFY_DAYS', 'OBSERVE',
     'sources', 'LEVELS',
 ]

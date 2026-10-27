@@ -13,7 +13,7 @@
 from dataclasses import dataclass
 from types import ModuleType
 
-from . import analysis, archives, docs, health, judgments, prompts, signals, structure, views, weeks
+from . import analysis, archives, docs, health, prompts, signals, structure, views, weeks
 
 
 @dataclass(frozen=True)
@@ -36,7 +36,6 @@ REGISTRY = (
     Spec('check_archives.py', archives),
     Spec('check_docs.py', docs),
     Spec('check_health.py', health),
-    Spec('check_judgments.py', judgments),
     Spec('check_prompts.py', prompts),
     Spec('check_signals.py', signals, flags=('--since', '--week')),
     Spec('check_structure.py', structure, fixable=True),

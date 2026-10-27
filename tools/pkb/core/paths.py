@@ -35,6 +35,10 @@ TEMPLATE_DIR = VAULT / 'templates'
 # 按内容归政策卡片或政策信号。判据住 domain（`domain/sources.py` 的 level）。
 RAW_DIR = VAULT / 'raw'
 ARTICLE_DIR = RAW_DIR / 'articles'
+# 人的落笔处（2026-10-28）：对人写的内容开一个口——机器只读不写。
+# 为什么放在 raw 下而不是 wiki 下：它不是「库的结论」，是**输入**。
+# 周观点取消判断与定稿后，人的异议要有地方写，写在产出里就会被下次生成覆盖。
+NOTES_DIR = RAW_DIR / 'notes'
 # 抓取过程的临时落点：原页与附件缓存，供抽取失败时人工复核；不是库内容
 CACHE_DIR = WORKSPACE / '.cache' / 'fetch'
 
@@ -45,7 +49,6 @@ LOG = VAULT / 'log.md'
 
 STATUS = OVERVIEW_DIR / '运行状态.md'            # 管「跑没跑」
 LEDGER = OVERVIEW_DIR / '任务台账.md'            # 管「修没修」
-JUDGE_LEDGER = OVERVIEW_DIR / '判断台账.md'      # 管「判没判」
 COLLECT_LOG = OVERVIEW_DIR / '采集日志.md'       # 管「采到哪天」
 CHECK_REPORT = OVERVIEW_DIR / '体检报告.md'
 WEEK_TEMPLATE = TEMPLATE_DIR / '周观点模板.md'

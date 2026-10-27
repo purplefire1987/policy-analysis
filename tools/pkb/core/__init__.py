@@ -10,9 +10,9 @@
 from .paths import (                                  # noqa: F401
     VAULT, WORKSPACE, TOOLS,
     CARD_DIR, CHAIN_DIR, SIGNAL_DIR, WEEKLY_DIR, ANALYSIS_DIR,
-    OVERVIEW_DIR, TEMPLATE_DIR, RAW_DIR, ARTICLE_DIR, CACHE_DIR,
+    OVERVIEW_DIR, TEMPLATE_DIR, RAW_DIR, ARTICLE_DIR, NOTES_DIR, CACHE_DIR,
     INDEX, AGENTS, README, LOG,
-    STATUS, LEDGER, JUDGE_LEDGER, COLLECT_LOG, CHECK_REPORT, WEEK_TEMPLATE, SIGNAL_TEMPLATE,
+    STATUS, LEDGER, COLLECT_LOG, CHECK_REPORT, WEEK_TEMPLATE, SIGNAL_TEMPLATE,
     PROMPT_DIR, PROMPT_ARCHIVE,
     EXPERT_DIR, EXPERT_MD, EXPERT_SKILL, EXPERT_SCRIPTS, SKIP_DIRS,
 )
@@ -25,7 +25,7 @@ from .fm import (                                     # noqa: F401
     FM_RE, parse_fm, set_fm_field,
 )
 from .md import (                                     # noqa: F401
-    SECTION_HEAD, extract_sections, scan_dated, md_section_lines, table_rows,
+    SECTION_HEAD, extract_sections, scan_dated, scan_notes, md_section_lines, table_rows,
     similar, iso_week, parse_date, span,
 )
 from .report import (                                 # noqa: F401
@@ -37,9 +37,9 @@ __all__ = [
     # 路径
     'VAULT', 'WORKSPACE', 'TOOLS',
     'CARD_DIR', 'CHAIN_DIR', 'SIGNAL_DIR', 'WEEKLY_DIR', 'ANALYSIS_DIR',
-    'OVERVIEW_DIR', 'TEMPLATE_DIR', 'RAW_DIR', 'ARTICLE_DIR', 'CACHE_DIR',
+    'OVERVIEW_DIR', 'TEMPLATE_DIR', 'RAW_DIR', 'ARTICLE_DIR', 'NOTES_DIR', 'CACHE_DIR',
     'INDEX', 'AGENTS', 'README', 'LOG',
-    'STATUS', 'LEDGER', 'JUDGE_LEDGER', 'COLLECT_LOG', 'CHECK_REPORT', 'WEEK_TEMPLATE', 'SIGNAL_TEMPLATE',
+    'STATUS', 'LEDGER', 'COLLECT_LOG', 'CHECK_REPORT', 'WEEK_TEMPLATE', 'SIGNAL_TEMPLATE',
     'PROMPT_DIR', 'PROMPT_ARCHIVE',
     'EXPERT_DIR', 'EXPERT_MD', 'EXPERT_SKILL', 'EXPERT_SCRIPTS', 'SKIP_DIRS',
     # 专家包入口形态判定（链接／副本／链错／缺失）
@@ -52,7 +52,7 @@ __all__ = [
     'FM_RE', 'parse_fm', 'set_fm_field',
     # markdown 与日期
     'SECTION_HEAD', 'extract_sections', 'md_section_lines', 'table_rows',
-    'scan_dated', 'similar', 'iso_week', 'parse_date', 'span',
+    'scan_dated', 'scan_notes', 'similar', 'iso_week', 'parse_date', 'span',
     # 输出与判定
     'ok', 'err', 'warn', 'info', 'section', 'banner',
     'SUMMARY_MARK', 'summary', 'Verdict', 'Result', 'Reporter',
