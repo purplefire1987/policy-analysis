@@ -133,6 +133,29 @@ def check_referees(rows, allowed, weeks):
     return errors
 
 
+def basis_problem(state, basis):
+    """已结算的行，结算依据够不够格：**哪天、什么数、从哪查**，三样缺一即不合格。
+
+    它不判数值对不对——脚本核不了数，也不该假装能核。它拦的是另一种更常见的情形：
+    「已核实」「基本成立」四个字就算结算完。写不出日期与数值，就等于没查。
+    这也是「判成立也要写依据」那条纪律唯一的执行者：纪律没有判据就只是愿望。
+    """
+    if state == JUDGE_PENDING:
+        return None
+    b = (basis or '').strip()
+    if not b:
+        return '已结算但结算依据空着——「判了」与「查过」必须能分开'
+    rest = re.sub(r'\d{4}-\d{2}-\d{2}', '', b)      # 去掉日期后再找数值，否则日期自带数字
+    miss = []
+    if not re.search(r'\d{4}-\d{2}-\d{2}', b):
+        miss.append('取数日期')
+    if not re.search(r'\d', rest):
+        miss.append('实际数值')
+    if not re.search(r'https?://|\[\[', b):
+        miss.append('出处（链接或存档文件名）')
+    return '结算依据缺' + '、'.join(miss) if miss else None
+
+
 def audit(rows, lookup):
     """rows → (errors, items)。lookup(编号) 返回对应周观点正文或 None。
 
@@ -156,6 +179,9 @@ def audit(rows, lookup):
             errors.append(f'{jid} 判定日「{cells[COL_DUE]}」不是 YYYY-MM-DD')
         if cells[COL_STATE] not in JUDGE_STATES:
             errors.append(f'{jid} 状态「{cells[COL_STATE]}」不在四值内')
+        bad = basis_problem(cells[COL_STATE], cells[COL_BASIS])
+        if bad:
+            errors.append(f'{jid} {bad}')
         src = lookup(jid)
         if src is None:
             errors.append(f'{jid} 找不到 {m.group(1)}-W{m.group(2)} 的周观点文件')

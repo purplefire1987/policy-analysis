@@ -25,7 +25,7 @@ from .fm import (                                     # noqa: F401
     FM_RE, parse_fm, set_fm_field,
 )
 from .md import (                                     # noqa: F401
-    SECTION_HEAD, extract_sections, md_section_lines, table_rows,
+    SECTION_HEAD, extract_sections, scan_dated, md_section_lines, table_rows,
     similar, iso_week, parse_date, span,
 )
 from .report import (                                 # noqa: F401
@@ -52,7 +52,7 @@ __all__ = [
     'FM_RE', 'parse_fm', 'set_fm_field',
     # markdown 与日期
     'SECTION_HEAD', 'extract_sections', 'md_section_lines', 'table_rows',
-    'similar', 'iso_week', 'parse_date', 'span',
+    'scan_dated', 'similar', 'iso_week', 'parse_date', 'span',
     # 输出与判定
     'ok', 'err', 'warn', 'info', 'section', 'banner',
     'SUMMARY_MARK', 'summary', 'Verdict', 'Result', 'Reporter',

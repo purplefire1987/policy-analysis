@@ -23,7 +23,7 @@ from .fields import (                                   # noqa: F401
 #   需要这两个表的只有 `checks/docs/ledger.py`，它直接 import `pkb.domain.ledger`。
 from .chains import FIELD_MAP                           # noqa: F401
 from .automations import AUTOMATIONS, PROMPT_ANCHORS    # noqa: F401
-from .legacy import LEGACY_WEEKS, JUDGE_SINCE, IMPACT_SINCE   # noqa: F401
+from .legacy import LEGACY_WEEKS, JUDGE_SINCE, IMPACT_SINCE, DRAFT_SINCE   # noqa: F401
 from .lifecycle import ARCHIVE_DAYS, STALE_DAYS, VERIFY_DAYS, OBSERVE  # noqa: F401
 from . import sources                                   # noqa: F401
 from .sources import LEVELS                             # noqa: F401
@@ -36,7 +36,7 @@ __all__ = [
     'STANCES', 'STANCE_MIN', 'ARCHIVE_DATE_TOLERANCE',
     'FIELD_MAP',
     'AUTOMATIONS', 'PROMPT_ANCHORS',
-    'LEGACY_WEEKS', 'JUDGE_SINCE', 'IMPACT_SINCE',
+    'LEGACY_WEEKS', 'JUDGE_SINCE', 'IMPACT_SINCE', 'DRAFT_SINCE',
     'ARCHIVE_DAYS', 'STALE_DAYS', 'VERIFY_DAYS', 'OBSERVE',
     'sources', 'LEVELS',
 ]

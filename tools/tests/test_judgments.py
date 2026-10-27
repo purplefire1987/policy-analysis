@@ -92,7 +92,8 @@ class TestOverdue(unittest.TestCase):
 
     def test_已结算的不再点名(self):
         _, items = audit([row('J2026-W43-1', due='2026-11-01', state='✅ 成立',
-                              basis='2026-11-18 海关数据 +8%')], lambda jid: WEEK)
+                              basis='2026-11-18 海关数据 +8% https://example.gov.cn/a')],
+                         lambda jid: WEEK)
         self.assertEqual(overdue(items, datetime.date(2026, 11, 20)), [])
 
     def test_判定日当天不算过期(self):
@@ -161,3 +162,36 @@ class Test裁判来源(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class Test结算依据(unittest.TestCase):
+    """「判成立也要写依据」此前只有纪律、没有判据。
+
+    判据只查三样在不在（取数日期／实际数值／出处），不查数值对不对——
+    脚本核不了数，假装能核就是另一种编造。拦的是「已核实」四个字算结算完。
+    """
+
+    def _errs(self, state, basis):
+        return audit([row('J2026-W43-1', state=state, basis=basis)],
+                     lambda jid: WEEK)[0]
+
+    def test_待判行不要求依据(self):
+        self.assertEqual(self._errs('⏳ 待判', '—'), [])
+
+    def test_已结算但空依据要报(self):
+        self.assertTrue(any('结算依据' in e for e in self._errs('✅ 成立', '—')))
+
+    def test_只有一句已核实不算结算(self):
+        errs = self._errs('✅ 成立', '已核实，确实下降')
+        self.assertTrue(any('取数日期' in e for e in errs))
+
+    def test_有日期无数值要报(self):
+        errs = self._errs('✅ 成立', '2026-11-18 查过海关数据 https://a.gov.cn/x')
+        self.assertTrue(any('实际数值' in e for e in errs))
+
+    def test_有日期有数值无出处要报(self):
+        errs = self._errs('❌ 不成立', '2026-11-18 海关数据 -3%')
+        self.assertTrue(any('出处' in e for e in errs))
+
+    def test_三样齐全就通过(self):
+        self.assertEqual(self._errs('✅ 成立', '2026-11-18 海关数据 +8% https://a.gov.cn/x'), [])

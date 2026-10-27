@@ -81,16 +81,28 @@ def window_of(args):
     return None
 
 
-def scan_fields():
-    """八字段完整度（只统计，不阻断）。
+DIRECTIONS = ('继续', '调整', '终结')
 
-    「关联政策」「政策走向」是周观点第二节五列表的直接来源。模板 2026-10-24 才补齐，
-    此前 111 条存量均缺这两项，因此这里只报数、不判异常——补录按任务台账存量批次做。
+
+def scan_fields():
+    """七字段完整度 + 两条硬判据（取值合法性、关联政策非空）。
+
+    返回 dict：
+      tot / assoc / direc / both —— 完整度计数（只统计，不阻断）
+      bad_dir   —— [(页, 日期, 实际取值)]，「政策走向」不在 继续／调整／终结 三档内
+      empty_assoc —— [(页, 日期)]，有「关联政策」标题但冒号后为空
+
+    为什么把取值做成硬判据（2026-10-27）：三档是**枚举**，写「中性」「利好」既无法聚合
+    也无法在周观点第二节里计数。缺字段可以慢慢补（那是额度问题），取值写错是**判据失效**，
+    必须当场报出来。与之相对，「尚无对应政策」是合法取值（政策空白点），不算空。
+    模板 2026-10-27 由八字段并为七字段（原「关联」并入行末 `｜链：`），存量同日全量迁移。
     """
     tot = assoc = direc = both = 0
+    bad_dir, empty_assoc = [], []
     for p in sorted(SIGNAL_DIR.glob('*.md')):
         if p.name.startswith('.'):
             continue
+        page = p.stem.replace('政策信号-', '')
         text = p.read_text(encoding='utf-8', errors='ignore')
         hits = list(DATE_LINE.finditer(text))
         for i, m in enumerate(hits):
@@ -102,7 +114,19 @@ def scan_fields():
             assoc += a
             direc += d
             both += (a and d)
-    return tot, assoc, direc, both
+
+            am = re.search(r'^- \*\*关联政策\*\*：[ \t]*(.*)$', chunk, re.M)
+            if am and not am.group(1).strip():
+                empty_assoc.append((page, m.group(1)))
+
+            dm = re.search(r'^- \*\*政策走向\*\*：[ \t]*(.*)$', chunk, re.M)
+            if dm:
+                # 允许 `继续` 与 `**继续**` 两种写法，只看前几个字
+                v = dm.group(1).lstrip('*＊ ').strip()
+                if not v.startswith(DIRECTIONS):
+                    bad_dir.append((page, m.group(1), v[:12]))
+    return {'tot': tot, 'assoc': assoc, 'direc': direc, 'both': both,
+            'bad_dir': bad_dir, 'empty_assoc': empty_assoc}
 
 
 def _gap_rows(pages, today):
@@ -149,7 +173,11 @@ def _gap_block(rows):
 
 
 def report_all(pages):
-    """全页状态：断档表 + 分档 + 八字段完整率（恒 PASS，只报进度）。"""
+    """全页状态：断档表 + 分档 + 七字段完整率。
+
+    完整率只报进度（恒 PASS）；「政策走向」取值非法或「关联政策」为空则 FAIL——
+    前者让三档无法聚合，后者等于这一栏白写了，两者都不是「补录额度」问题。
+    """
     today = datetime.date.today()
     lines = ['=== 政策信号页状态 ===',
              f'今天 {today}（{iso_week(today)}）｜共 {len(pages)} 页', '']
@@ -159,14 +187,23 @@ def report_all(pages):
         lines.append(f'注：{buckets[">30 天或空"]} 页断档超 30 天，属历史空白（只报不阻断），'
                      '补采时按日期逐日扫，不按页是否"最旧"决定。')
 
-    tot, assoc, direc, both = scan_fields()
+    f = scan_fields()
+    tot, both = f['tot'], f['both']
     pct = f'{both * 100 / tot:.1f}%' if tot else '—'
-    lines += ['', f'八字段完整率：{both}/{tot}（{pct}）'
-                  f'｜含「关联政策」{assoc}｜含「政策走向」{direc}']
-    if tot and both < tot:
-        lines.append('注：这两项是周观点第二节五列表的直接来源，缺了只能由写作者现场判断。'
-                     '模板已于 2026-10-24 补齐（八字段），存量补录按任务台账批次推进，不阻断。')
-    return Result(Verdict.PASS, f'信号 {tot} 条，八字段完整率 {both}/{tot}（{pct}）', lines)
+    lines += ['', f'七字段完整率：{both}/{tot}（{pct}）'
+                  f'｜含「关联政策」{f["assoc"]}｜含「政策走向」{f["direc"]}']
+    for page, date, v in f['bad_dir'][:10]:
+        lines.append(f'  ✗ {page} {date}：「政策走向」写「{v}」，'
+                     f'只能取 继续／调整／终结')
+    for page, date in f['empty_assoc'][:10]:
+        lines.append(f'  ✗ {page} {date}：「关联政策」为空')
+
+    bad = len(f['bad_dir']) + len(f['empty_assoc'])
+    if bad:
+        return Result(Verdict.FAIL,
+                      f'信号 {tot} 条：{len(f["bad_dir"])} 处走向取值非法、'
+                      f'{len(f["empty_assoc"])} 处关联政策为空', lines)
+    return Result(Verdict.PASS, f'信号 {tot} 条，七字段完整率 {both}/{tot}（{pct}）', lines)
 
 
 def _window_problems(hits, total, days, start, end):

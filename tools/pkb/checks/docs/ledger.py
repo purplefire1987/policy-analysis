@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""**入口与台账的统一性**：动作表三处一致、库内不直调脚本、台账结构与生命周期。
+"""**入口与台账的统一性**：库内不直调脚本、台账结构与生命周期。
 
-这一组守的都是「同一事实只有一个出口」：
-动作清单只有 `run.py` 一份实现、命令只有 `run.py` 一个入口、
-现状数字只有 `plan`／`check` 一个出口。三份副本一旦出现，漏改不会报错。
+这一组守的都是「同一事实只有一个出口」：命令只有 `run.py` 一个入口、
+现状数字只有 `plan`／`check` 一个出口。副本一旦出现，漏改不会报错。
+（动作表那一项 2026-10-28 已取消——三份表都删了，规则只写「跑 `run.py list`」，
+不留副本就不必核副本是否一致。）
 台账另有一件事没人管：**四态之间没有自动过渡**。写完 🟡 就再也不动、
 ✅ 堆在未闭环项里不分新旧，读者只能自己猜哪条还在办——2026-10-26 清理时
 12 条 ✅ 与 4 天没动的 🟡 同时存在，就是没人执行过「该退就退」。
@@ -13,7 +14,7 @@ import datetime
 import re
 
 from pkb.core import (AGENTS, INDEX, README, EXPERT_MD, STATUS, OVERVIEW_DIR,
-                      LEDGER, CHECK_REPORT, TOOLS, read, parse_date)
+                      LEDGER, CHECK_REPORT, read, parse_date)
 from pkb.domain import ARCHIVE_DAYS, STALE_DAYS, VERIFY_DAYS, OBSERVE
 from pkb.domain.ledger import LEDGER_TYPES, LEDGER_OWNERS   # 不在 __all__，见 domain/__init__ 说明
 
@@ -52,41 +53,6 @@ def check_no_direct_calls():
                 err(p.name, f'第 {i} 行直调脚本，应改为 `run.py <动作>`：{line.strip()[:70]}')
     if not hit:
         ok('库内文档 0 处直调脚本（统一走 run.py）')
-
-
-def check_actions():
-    """入口动作表三处必须一致：`run.py` 的 ACTIONS ／ AGENTS 第十节 ／ 专家定义二点五。
-
-    为什么单列：同一张表写在三个文件里＝三份副本，加一个动作要改三处，漏改不会报错，
-    只会让读者按旧表去调一个不存在的动作（或不知道新动作存在）。2026-10-25 加 `week`
-    就是手工改三处——这条检查把它变成机器活。
-    判据以 `run.py` 为准：它是实现，文档是它的说明书。
-    """
-    src = read(TOOLS / 'run.py', '')
-    m = re.search(r'^ACTIONS\s*=\s*\{(.*?)^\}', src, re.S | re.M)
-    if not m:
-        err('动作表', 'run.py 里找不到 ACTIONS 定义，本项无法校验')
-        return
-    impl = set(re.findall(r"'(\w+)':\s*\(", m.group(1)))
-
-    segs = {
-        'AGENTS': read(AGENTS, '').split('### 统一入口', 1)[-1].split('### 硬门槛', 1)[0],
-        '专家定义': read(EXPERT, '').split('、统一入口', 1)[-1].split('**不要手写统计数字', 1)[0],
-    }
-    bad = False
-    for name, seg in segs.items():
-        documented = set(re.findall(r'^\|\s*`(\w+)', seg, re.M))
-        if not documented:
-            warn(name, '未找到入口动作表（如已改版，请同步更新本检查）')
-            continue
-        for a in sorted(impl - documented):
-            bad = True
-            err(name, f'入口有动作 `{a}`，本文件未列出')
-        for a in sorted(documented - impl):
-            bad = True
-            err(name, f'列出了动作 `{a}`，但 run.py 里没有——按它调用会报未知动作')
-    if not bad:
-        ok(f'入口动作表三处一致（{len(impl)} 个：{"、".join(sorted(impl))}）')
 
 
 LEDGER_HOMES = {'未闭环项': 8, '关闭记录': 5}

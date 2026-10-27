@@ -11,12 +11,13 @@
 三档之外自由发挥等于把「影响」写成形容词。
 """
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from pkb.checks.weeks import _match, impact_issues  # noqa: E402
+from pkb.checks.weeks import _match, draft_issues, impact_issues  # noqa: E402
 from pkb.domain import IMPACT_SINCE  # noqa: E402
 
 CARD = '出口管制与国际博弈'
@@ -91,3 +92,43 @@ class TestImpactColumn(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class Test定稿痕(unittest.TestCase):
+    """「草稿与定稿分不开、人改一次就覆盖」的诊断（2026-10-28）。
+
+    判据只有两格：状态在不在二选一里、标了定稿的有没有留定稿人与定稿时间。
+    生效点是 W44（`DRAFT_SINCE`）——W43 及更早没有这两个字段，事后补写等于伪造。
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _file(self, week, fm=None):
+        p = self.dir / f'周观点-{week}.md'
+        body = '---\n类型: 周观点\n' + ('' if fm is None else f'{fm}\n') + '---\n\n## 一、本周政策速览表\n'
+        p.write_text(body, encoding='utf-8')
+        return p
+
+    def test_生效前的周不报(self):
+        self.assertEqual(draft_issues([self._file('2026-W43')]), [])
+
+    def test_缺状态要报(self):
+        got = draft_issues([self._file('2026-W44', '政策数: 5')])
+        self.assertEqual(len(got), 1)
+        self.assertIn('状态', got[0][1])
+
+    def test_草稿不要求定稿人(self):
+        self.assertEqual(draft_issues([self._file('2026-W44', '状态: 草稿')]), [])
+
+    def test_标了定稿却没写定稿人要报(self):
+        got = draft_issues([self._file('2026-W45', '状态: 定稿')])
+        self.assertEqual({m for _wk, m in got}, {'标了定稿但缺 `定稿人`', '标了定稿但缺 `定稿时间`'})
+
+    def test_三样齐全不报(self):
+        fm = '状态: 定稿\n定稿人: 主编\n定稿时间: 2026-11-02 10:00'
+        self.assertEqual(draft_issues([self._file('2026-W45', fm)]), [])

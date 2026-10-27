@@ -26,7 +26,7 @@ import re
 import json
 import datetime
 
-from pkb.core import (CARD_DIR, SIGNAL_DIR, COLLECT_LOG, LEDGER, STATUS,
+from pkb.core import (CARD_DIR, SIGNAL_DIR, COLLECT_LOG, LEDGER,
                  read as lib_read, md_section_lines, table_rows, parse_date,
                  span, iso_week)
 from pkb.domain import STANCES, STANCE_MIN
@@ -47,7 +47,8 @@ GAP_BATCH = 2       # 政策断档每批 2 天
 GAP_TRIGGER = 3     # 断档 >3 天才分批；≤3 天一轮补完，不必等体检
 VIEW_DAILY = 3      # 存量观点每轮保底回填
 VIEW_WEEKLY = 5     # 存量观点每周目标（2026-10-24 由 10 下调：实测到不了 10）
-CLAIM_PER_CHECK = 1 # 每次体检后释放的存量页数／断档批次数
+CLAIM_PER_CHECK = 1 # 每次释放的存量页数／断档批次数
+GATE_DAYS = 2       # 领活闸门：距上次领取满 N 天可领（2026-10-28 与体检解耦）
 
 
 # ────────────────────── 通用 ──────────────────────
@@ -159,24 +160,16 @@ def last_round():
     return best
 
 
-def last_check():
-    """体检最近运行日——它就是「领页」的闸门。
-    体检每 2 天一次，所以每次体检后只释放 1 页存量／1 批断档；
-    按 ISO 周记「最近领取周」会把两次体检之间的那次机会白白丢掉。"""
-    for r in table_rows(section(read(STATUS), '当前状态')):
-        if len(r) >= 4 and r[0].strip() == '体检':
-            m = re.search(r'(\d{4}-\d{2}-\d{2})', r[3])
-            return d(m.group(1)) if m else None
-    return None
+def claim_ok(last_claim):
+    """能否领活：从未领过 → 能；距上次领取满 `GATE_DAYS` 天 → 能。
 
-
-def claim_ok(last_claim, chk):
-    """本周期能否领活：从未领过 → 能；最近一次体检晚于上次领取 → 能。"""
+    闸门原先挂在「体检最近运行日」上（2026-10-28 解耦）。那样等于让补采节奏被体检
+    频率绑架：想降体检频率就拖慢存量清零，想加快补采就得每 2 天写三页报告。而闸门
+    本来要防的只是「一次领太多、领了不补」，与体检跑没跑没有因果关系。
+    """
     if last_claim is None:
         return True
-    if chk is None:          # 体检没留痕 → 退化成每天一页，不把队列冻死
-        return last_claim < TODAY
-    return last_claim < chk
+    return (TODAY - last_claim).days >= GATE_DAYS
 
 
 def ledger_gap_cursor():
@@ -257,7 +250,7 @@ def _views(cards):
             'weeks_left': round(max(1.0, (7 - TODAY.isoweekday() + 1) / 5.0), 1)}
 
 
-def _gap(chk):
+def _gap():
     """② 政策断档：短断档一轮补完，长断档分批且每批等一次体检。
 
     领取闸门挂在体检节拍上——体检每 2 天一次，按周记会丢掉两次体检之间的机会。
@@ -280,12 +273,12 @@ def _gap(chk):
             claim = cursor['claim'] if cursor else None
             batch = {'start': start, 'end': end,
                      'left_after': (TODAY - end).days, 'short': short,
-                     'wait': (not short) and not claim_ok(claim, chk),
+                     'wait': (not short) and not claim_ok(claim),
                      'claim': claim}
     return gap, batch, cursor
 
 
-def _stock(sig, chk):
+def _stock(sig):
     """③ 存量页队列：断档超 STOCK_GAP 的信号页，每次体检后只释放一页。"""
     old = stock_rows()
     queue = []
@@ -307,7 +300,7 @@ def _stock(sig, chk):
             'left': (TODAY - end).days if end else None,
             'status': old.get(page, {}).get('status', '未领'),
             'claim_date': old.get(page, {}).get('claim'),
-            'claimable': claim_ok(old.get(page, {}).get('claim'), chk),
+            'claimable': claim_ok(old.get(page, {}).get('claim')),
         })
     queue.sort(key=lambda x: -x['gap'])
     claimed = [q for q in queue if q['claimable']]
@@ -337,13 +330,12 @@ def plan(round_no=None, top=8):
     """四块欠账各自的取数与判定分开算，这里只负责拼装。"""
     cards = scan_cards()
     sig = scan_signals()
-    chk = last_check()          # 领取闸门：最近一次体检运行日
-    gap, batch, cursor = _gap(chk)
-    queue, claimed, stale = _stock(sig, chk)
+    gap, batch, cursor = _gap()
+    queue, claimed, stale = _stock(sig)
 
     return {
         'today': TODAY.isoformat(), 'week': iso_week(TODAY), 'round': round_no,
-        'chk': chk,
+        'gate': GATE_DAYS,
         'views': _views(cards),
         'gap': gap, 'batch': batch, 'cursor': cursor,
         'stock': queue, 'claim': claimed, 'stale': stale,
@@ -390,12 +382,12 @@ def pr_gap(p):
         return
     if bt['short']:
         print(f'  断档 ≤{GAP_TRIGGER} 天，本轮一次补完 {span(bt["start"], bt["end"])}'
-              f'（短断档不等体检，等两天反而把窗口拖长）')
+              f'（短断档不等闸门，等两天反而把窗口拖长）')
     elif bt['wait']:
         print(f'  断档 >{GAP_TRIGGER} 天，按 {GAP_BATCH} 天/批推进；'
-              f'**本批等下次体检释放**（上次领取 {bt["claim"] or "—"}，'
-              f'体检 {p["chk"] or "未留痕"}）')
-        print('  → 本周期只补当日窗口，不要整段扫；体检跑完再补这一段')
+              f'**本批等闸门释放**（上次领取 {bt["claim"] or "—"}，'
+              f'须满 {p["gate"]} 天）')
+        print('  → 本周期只补当日窗口，不要整段扫；闸门释放后再补这一段')
     else:
         print(f'  本批补 {span(bt["start"], bt["end"])}'
               f'（{GAP_BATCH} 天/批，补完还剩 {bt["left_after"]} 天）')
@@ -409,7 +401,7 @@ def pr_gap(p):
 def pr_stock(p):
     q = p['stock']
     print(f'\n【3·存量补采队列（信号页断档 >{STOCK_GAP} 天）】{len(q)} 页'
-          f'　|　每次体检后领 {CLAIM_PER_CHECK} 页（体检最近运行：{p["chk"] or "未留痕"}）')
+          f'　|　每满 {p["gate"]} 天领 {CLAIM_PER_CHECK} 页（闸门按上次领取日算）')
     for x in q:
         flag = '← 本次领这页' if p['claim'] and x is p['claim'][0] else ''
         got = f'｜已领 {x["claim_date"]}' if x['claim_date'] else ''
@@ -424,7 +416,7 @@ def pr_stock(p):
               f'{x["left"]} | {p["today"]} | 补采中 |')
     else:
         print(f'  本周期已领过（上次 {q[0]["claim_date"] if q else "—"}），'
-              f'下个页面等下次体检释放')
+              f'下个页面等闸门释放（距上次领取满 {p["gate"]} 天）')
     if p['stale']:
         print(f'  可归档（断档已 ≤{STOCK_GAP} 天或已清零，把状态改 ✅）：'
               + '、'.join(p['stale']))

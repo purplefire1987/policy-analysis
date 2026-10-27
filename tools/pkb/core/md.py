@@ -37,6 +37,31 @@ def extract_sections(body):
     return [(d, t, '\n'.join(ch), raw) for d, t, ch, raw in secs], bad
 
 
+def scan_dated(dirpath):
+    """扫目录下全部 md，按 `### 日期 · 标题` 切小节，**带行号**（1 基）。
+
+    与 `extract_sections` 的差别只在此：那个给正文，这个给「文件:起-止」，
+    供读者按行号去读那一段。**切法必须同源**——两处各写一份正则，
+    迟早会对同一个小节边界给出两种答案（周素材与查询就再也对不上）。
+    """
+    out = []
+    for p in sorted(dirpath.glob('*.md')):
+        lines = p.read_text(encoding='utf-8', errors='ignore').split('\n')
+        cur = None
+        for i, line in enumerate(lines, 1):
+            m = SECTION_HEAD.match(line)
+            if m:
+                if cur:
+                    cur['end'] = i - 1
+                    out.append(cur)
+                cur = {'file': p.name, 'start': i, 'end': len(lines),
+                       'date': m.group(1), 'title': m.group(2)}
+        if cur:
+            cur['end'] = len(lines)
+            out.append(cur)
+    return out
+
+
 def md_section_lines(text, title):
     """取 `## ` 节（标题含 title 即中）到下一个 `## ` 之间的行。
 

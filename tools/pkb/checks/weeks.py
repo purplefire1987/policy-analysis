@@ -16,8 +16,8 @@ import datetime
 import difflib
 import re
 
-from pkb.core import CARD_DIR, WEEKLY_DIR, Result, Verdict
-from pkb.domain import (FIELD_MAP, IMPACT_SINCE, IMPACTS, JUDGE_SINCE,
+from pkb.core import CARD_DIR, WEEKLY_DIR, Result, Verdict, parse_fm, read
+from pkb.domain import (DRAFT_SINCE, FIELD_MAP, IMPACT_SINCE, IMPACTS, JUDGE_SINCE,
                         LEGACY_WEEKS, STAT_DOMAINS)
 
 
@@ -325,6 +325,28 @@ def check_week(week_str, verbose=True):
     }, out
 
 
+def draft_issues(files):
+    """`DRAFT_SINCE` 起：定稿的周观点要能回答「谁定的稿」。
+
+    病根不是缺字段，是「人改一次就覆盖」——三个月后分不清哪句是机器写的、哪句是人拍的，
+    而这两者的可信度完全不同。脚本只管两个格子填没填，内容归人判。
+    W43 及更早不补：事后写「定稿人」等于伪造当时谁定的稿。
+    """
+    out = []
+    for f in files:
+        wk = f.stem.replace('周观点-', '')
+        if wk < DRAFT_SINCE:
+            continue
+        fm, _body = parse_fm(read(f, ''))
+        state = str(fm.get('状态', '')).strip()
+        if state not in ('草稿', '定稿'):
+            out.append((wk, '缺 `状态: 草稿｜定稿`'))
+        elif state == '定稿':
+            out += [(wk, f'标了定稿但缺 `{k}`') for k in ('定稿人', '定稿时间')
+                    if not str(fm.get(k, '')).strip()]
+    return out
+
+
 def run_all():
     files = sorted(WEEKLY_DIR.glob('周观点-*.md'))
     tbl = []
@@ -357,9 +379,15 @@ def run_all():
     live = [t for t in tbl if not t[7]]
     bad = [t[0] for t in live if t[6] is Verdict.FAIL]
     latest = live[-1] if live else None
+    drafts = draft_issues(files)
+    if drafts:
+        worst = Verdict.FAIL
+        lines += ['', '定稿痕（`状态`／`定稿人`／`定稿时间`）：']
+        lines += [f'  · {wk} {msg}' for wk, msg in drafts]
     summary = (f'{len(tbl)} 周（有效 {len(live)}／历史归档 {len(tbl) - len(live)}）：'
                + (f'最新 {latest[0]} 覆盖率 {latest[5]:.1f}%' if latest else '无有效周')
-               + (f'；未过 {len(bad)} 周（{",".join(bad)}）' if bad else '；全部通过'))
+               + (f'；未过 {len(bad)} 周（{",".join(bad)}）' if bad else '；全部通过')
+               + (f'；定稿痕缺 {len(drafts)} 处' if drafts else ''))
     return Result(worst, summary, lines)
 
 

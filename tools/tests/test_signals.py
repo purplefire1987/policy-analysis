@@ -71,5 +71,71 @@ class Test断档分档(unittest.TestCase):
         self.assertIn('空白', signals._gap_tag(45)[1])
 
 
+class Test信号字段判据(unittest.TestCase):
+    """「政策走向」是枚举、「关联政策」是必填——两者都要能被抓出来。
+
+    为什么这里必须真有测试：2026-10-27 把八字段并为七字段时，改的是**判据**本身。
+    如果只验证「119 条全过」，那么判据写坏了（比如永远找不到字段、永远返回空列表）
+    也会显示 100% —— 那是「判据静默失效」，比数据缺失更难发现。
+    所以每条都构造**故意写错的样本**，确认它报得出来。
+    """
+
+    def setUp(self):
+        import tempfile
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+        self.old = signals.SIGNAL_DIR
+        signals.SIGNAL_DIR = self.dir
+
+    def tearDown(self):
+        signals.SIGNAL_DIR = self.old
+        self.tmp.cleanup()
+
+    def _page(self, assoc='政策甲（2026-01-01）｜一手源 [原文](http://x)｜链：[[政策链-甲]]',
+              direction='继续——原话未变'):
+        body = ('# 政策信号汇总：测试\n\n## 新闻列表（按时间倒序）\n\n'
+                '### 2026-10-20 · 某场发布会\n\n'
+                '- **信号主题**：一句话\n'
+                '- **来源**：[新华社（2026-10-20）](http://x)\n'
+                '- **核心信号**：某表态\n'
+                '- **变化字眼**：**首次**\n'
+                '- **参会/相关方**：某人（某职）\n')
+        if assoc is not None:
+            body += f'- **关联政策**：{assoc}\n'
+        if direction is not None:
+            body += f'- **政策走向**：{direction}\n'
+        (self.dir / '政策信号-测试.md').write_text(body, encoding='utf-8')
+        return signals.load_pages()
+
+    def test_三档取值都合法(self):
+        for v in ('继续', '调整', '终结', '**调整**——换了表述'):
+            with self.subTest(v=v):
+                r = signals.report_all(self._page(direction=v))
+                self.assertEqual(r.verdict, signals.Verdict.PASS, r.summary)
+
+    def test_走向写成中性要报错(self):
+        r = signals.report_all(self._page(direction='中性——影响有限'))
+        self.assertEqual(r.verdict, signals.Verdict.FAIL)
+        self.assertIn('走向取值非法', r.summary)
+        self.assertTrue(any('只能取' in l for l in r.lines), r.lines)
+
+    def test_关联政策为空要报错(self):
+        r = signals.report_all(self._page(assoc=''))
+        self.assertEqual(r.verdict, signals.Verdict.FAIL)
+        self.assertIn('关联政策为空', r.summary)
+
+    def test_尚无对应政策是合法取值不是空(self):
+        """政策空白点价值最高，不能因为没写出政策名就判它空。"""
+        r = signals.report_all(self._page(assoc='尚无对应政策（文件未出台）｜链：[[政策链-甲]]'))
+        self.assertEqual(r.verdict, signals.Verdict.PASS, r.summary)
+
+    def test_缺字段只降完整率不阻断(self):
+        """缺字段是额度问题，慢慢补；取值错是判据失效，当场报。两者不能混。"""
+        pages = self._page(assoc=None, direction=None)
+        r = signals.report_all(pages)
+        self.assertEqual(r.verdict, signals.Verdict.PASS)
+        self.assertIn('0/1', r.summary)
+
+
 if __name__ == '__main__':
     unittest.main()

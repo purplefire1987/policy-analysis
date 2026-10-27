@@ -26,9 +26,7 @@ import datetime
 import json
 import re
 
-from pkb.core import CARD_DIR, SIGNAL_DIR, WEEKLY_DIR, summary
-
-H3 = re.compile(r'^### (\d{4}-\d{2}-\d{2}) · (.+?)\s*$')
+from pkb.core import CARD_DIR, SIGNAL_DIR, WEEKLY_DIR, scan_dated, summary
 
 
 def week_range(week):
@@ -41,27 +39,6 @@ def week_range(week):
     except ValueError:
         return None
     return mon, mon + datetime.timedelta(days=6)
-
-
-def scan(dirpath, prefix):
-    """扫一个目录下全部 md，按 `### 日期 · 标题` 切小节，返回
-    [{'file','start','end','date','title'}]（行号 1 基）。"""
-    out = []
-    for p in sorted(dirpath.glob('*.md')):
-        lines = p.read_text(encoding='utf-8', errors='ignore').split('\n')
-        cur = None
-        for i, l in enumerate(lines, 1):
-            m = H3.match(l)
-            if m:
-                if cur:
-                    cur['end'] = i - 1
-                    out.append(cur)
-                cur = {'file': p.name, 'start': i, 'end': len(lines),
-                       'date': m.group(1), 'title': m.group(2)}
-        if cur:
-            cur['end'] = len(lines)
-            out.append(cur)
-    return out
 
 
 def body_of(dirpath, sec, limit=None):
@@ -119,8 +96,8 @@ def run(argv=None):
     mon, sun = rng
     lo, hi = mon.isoformat(), sun.isoformat()
 
-    cards = [s for s in scan(CARD_DIR, '政策卡片-') if lo <= s['date'] <= hi]
-    sigs = [s for s in scan(SIGNAL_DIR, '政策信号-') if lo <= s['date'] <= hi]
+    cards = [s for s in scan_dated(CARD_DIR) if lo <= s['date'] <= hi]
+    sigs = [s for s in scan_dated(SIGNAL_DIR) if lo <= s['date'] <= hi]
     cards.sort(key=lambda s: s['date'])
     sigs.sort(key=lambda s: s['date'])
 

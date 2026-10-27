@@ -7,6 +7,7 @@
 标题主干是机械去噪。一旦它开始生成判断、或开始编造机关名，就从提示变成了伪造。
 所以测试同时钉两条：去噪规则本身，以及「只有一行、不含观点句」。
 """
+import datetime
 import sys
 import unittest
 from pathlib import Path
@@ -54,3 +55,23 @@ class Test检索提示(unittest.TestCase):
         line = P.search_hint(item('关于开展人工智能应用服务商培育专项行动的通知', '工业和信息化部办公厅'))
         self.assertNotIn('\n', line)
         self.assertLessEqual(len(line), 60, line)
+
+
+class Test领活闸门(unittest.TestCase):
+    """闸门自 2026-10-28 起按「距上次领取天数」判，不再读体检运行日。
+
+    改的理由：挂在体检节拍上，等于让补采节奏被体检频率绑架——想降体检频率就拖慢
+    存量清零，想加快补采就得每 2 天写三页。闸门要防的只是「领了不补」。
+    """
+
+    def test_从未领过能领(self):
+        self.assertTrue(P.claim_ok(None))
+
+    def test_距上次领取满闸门天数就能领(self):
+        self.assertTrue(P.claim_ok(P.TODAY - datetime.timedelta(days=P.GATE_DAYS)))
+
+    def test_差一天不能领(self):
+        self.assertFalse(P.claim_ok(P.TODAY - datetime.timedelta(days=P.GATE_DAYS - 1)))
+
+    def test_今天领过不能领(self):
+        self.assertFalse(P.claim_ok(P.TODAY))

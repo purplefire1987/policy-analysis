@@ -183,11 +183,11 @@ class Test结构常量(unittest.TestCase):
     """
 
     def test_节数写错要报(self):
-        errs, _o = _const_check('- **结构常量**（33 张产业卡、15 条索引链、七节、八字段）')
+        errs, _o = _const_check('- **结构常量**（33 张产业卡、15 条索引链、七节、七字段）')
         self.assertTrue(any('周观点' in e and '节' in e for e in errs), errs)
 
     def test_卡数写错要报(self):
-        errs, _o = _const_check('- **结构常量**（32 张产业卡、15 条索引链、八节、八字段）')
+        errs, _o = _const_check('- **结构常量**（32 张产业卡、15 条索引链、八节、七字段）')
         self.assertTrue(any('张产业卡' in e for e in errs), errs)
 
     def test_句子被删要报而不是放过(self):
@@ -195,7 +195,7 @@ class Test结构常量(unittest.TestCase):
         self.assertTrue(any('无法校验' in e for e in errs), errs)
 
     def test_正确写法不报且给出实测值(self):
-        errs, oks = _const_check('- **结构常量**（33 张产业卡、15 条索引链、八节、八字段）')
+        errs, oks = _const_check('- **结构常量**（33 张产业卡、15 条索引链、八节、七字段）')
         self.assertEqual(errs, [])
         self.assertTrue(any('张产业卡 33' in o for o in oks), oks)
 
@@ -218,14 +218,15 @@ class Test结构数字扫全文档(unittest.TestCase):
         return [m for _i, m in S.rep.errors], list(S.rep.oks)
 
     def test_别的文档写错要报出文件与行号(self):
-        errs, _o = self._run({'AGENTS': '- **结构常量**（33 张产业卡、15 条索引链、八节、八字段）',
+        errs, _o = self._run({'AGENTS': '- **结构常量**（33 张产业卡、15 条索引链、八节、七字段）',
                               'index': '第一行\n共 31 张产业卡，一产业一卡。\n'})
         hit = [e for e in errs if '张产业卡' in e and '31' in e]
         self.assertTrue(hit, errs)
         self.assertIn('第 2 行', hit[0])
 
     def test_受控词与字段也一起比(self):
-        errs, _o = self._run({'AGENTS': '见 30 个受控词与七字段\n'})
+        """字段数写错的典型：2026-10-27 由八字段并为七字段，旧写法此后就是错的。"""
+        errs, _o = self._run({'AGENTS': '见 30 个受控词与八字段\n'})
         self.assertTrue(any('个受控词' in e for e in errs), errs)
         self.assertTrue(any('个信号字段' in e for e in errs), errs)
 
