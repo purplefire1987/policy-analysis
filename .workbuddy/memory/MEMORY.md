@@ -8,6 +8,7 @@
 - **库**：`/Users/Mr_Zhou/Documents/知识库/资料库`（Obsidian vault）。`raw/` 只读，两个例外：`raw/articles/` 由 `fetch` 新增（判据 `domain/sources.py::level()`，非原文级一律 `nofirst` 不写盘）；`raw/notes/` 是**人的落笔处**（机器只读不写）。
 - **报道归宿由内容定，不由来源级别定**：有正式文件→补链到卡；无文号而有方向性→信号页。没有第三种归宿（`raw/reports/` 已撤销）。
 - **工具**：`/Users/Mr_Zhou/WorkBuddy/2026-09-23-07-58-53/tools/`，入口 `run.py`（解析参数→路由→聚合退出码），实现在 `pkb/`。
+- **评分口径只有两处**：页面 `wiki/总览/评估口径.md`（怎么算分）＋ 数值 `pkb/domain/scoring.py`（六维名单／四类扣分／门槛线），`checks/docs/scoring.py` 对一次。项目里八套规则**只有六维等权折成总分**，其余是门槛（0/1）不折分——折分会让「体检全绿」抵消「内容欠账」。库 100 分制与助手 10 分制**不相加**（分母不同）。
 - **git**：`归档/`、`.cache/`、`归档/导出/` 在 `.gitignore`。两个仓库两段历史：工作区（远程 `git@github.com:purplefire1987/policy-analysis.git`，**已通**）与资料库（远程已配 `…/policy-vault.git`，**仓库待用户网页建**）。SSH `~/.ssh/id_ed25519` 无口令。**走 SSH 不走 connector**（建库 403）。
 - **专家包入口是符号链接**：`~/.workbuddy/plugins/.../policy-kb-tools/scripts` → `tools/`（绝对链接），物理只一份代码。`check_docs` 判形态（`core/expert.py` 四态 link／copy／alien／missing），副本即 exit 1。代价：专家包不自包含。
 - **已归档勿引用勿重建**：`政策跟踪运营方案`、`政策链总览`、`主题词表`、`判断台账`（2026-10-28 停用，存 `归档/判断台账.md`，**保留原文件名**以让旧链接仍解析）。
