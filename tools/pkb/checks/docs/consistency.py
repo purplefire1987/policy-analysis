@@ -8,7 +8,7 @@
 import re
 
 from pkb.core import (VAULT, CARD_DIR, CHAIN_DIR, WEEK_TEMPLATE,
-                      SIGNAL_TEMPLATE, read as lib_read)
+                      SIGNAL_TEMPLATE, card_files, read as lib_read)
 from pkb.domain import DOC_MUST_MENTION
 # 黑名单唯一定义处：pkb/domain/blacklist.py
 
@@ -70,7 +70,7 @@ def actual_facts():
     """
     from pkb.checks import structure as _structure      # 局部导入：避免包初始化期互引
     return {
-        'cards': len(list(CARD_DIR.glob('*.md'))),
+        'cards': len(card_files(CARD_DIR)),
         'chains': len(list(CHAIN_DIR.glob('*.md'))),
         'words': len(_structure.load_theme_words()[1]),
         'sections': len(re.findall(r'^##\s+', lib_read(WEEK_TEMPLATE, ''), re.M)),

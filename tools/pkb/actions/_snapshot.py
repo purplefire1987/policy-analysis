@@ -23,7 +23,7 @@ import re
 from collections import defaultdict
 from datetime import date
 
-from pkb.core import CARD_DIR, INDEX  # 路径唯一定义处：pkb/core/paths.py
+from pkb.core import CARD_DIR, INDEX, card_files, read  # 路径唯一定义处：pkb/core/paths.py
 
 
 def collect():
@@ -31,8 +31,11 @@ def collect():
     policies = defaultdict(int)
     n_cards = 0
     n_policies = 0
-    for p in sorted(CARD_DIR.glob('*.md')):
-        t = p.read_text(encoding='utf-8')
+    # 卡片发现走 card_files（2026-10-28）：原来这里是 `CARD_DIR.glob('*.md')`，
+    # 拆卷后 4 张目录卡被漏算，于是把 index 的「共 N 张产业卡」改成了 29——
+    # **快照自己就是一台偷偷写错数字的机器**，而且它写的是「权威统计」。
+    for p in card_files(CARD_DIR):
+        t = read(p, '')
         m = re.match(r'---\n(.*?)\n---', t, re.S)
         if not m:
             continue

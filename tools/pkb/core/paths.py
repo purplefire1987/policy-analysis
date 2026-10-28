@@ -41,6 +41,9 @@ ARTICLE_DIR = RAW_DIR / 'articles'
 NOTES_DIR = RAW_DIR / 'notes'
 # 抓取过程的临时落点：原页与附件缓存，供抽取失败时人工复核；不是库内容
 CACHE_DIR = WORKSPACE / '.cache' / 'fetch'
+# 临时目录（2026-10-28）：`tempfile` 的默认探测会把 cwd 当最后候选，
+# 而探测失败时已在 cwd 留下随机名空文件。落点钉在这里，见 core/tmp.py。
+TMP_DIR = WORKSPACE / '.cache' / 'tmp'
 
 INDEX = VAULT / 'index.md'                      # 唯一入口：链名单＋受控词＋快照
 AGENTS = VAULT / 'AGENTS.md'                    # 唯一规则来源
@@ -51,6 +54,13 @@ STATUS = OVERVIEW_DIR / '运行状态.md'            # 管「跑没跑」
 LEDGER = OVERVIEW_DIR / '任务台账.md'            # 管「修没修」
 COLLECT_LOG = OVERVIEW_DIR / '采集日志.md'       # 管「采到哪天」
 CHECK_REPORT = OVERVIEW_DIR / '体检报告.md'
+# 告警页（2026-10-28）：由 actions/alert 覆盖式重写，只列「要人知道的」。
+# 为什么单独一页而不是只看体检输出：体检是流水（跑完就滚走了），
+# 而「今天体检发现采集没跑」这件事需要留在页面上等人看见。
+ALERT = OVERVIEW_DIR / '告警.md'
+# 出库落点（2026-10-28）：交给别人的成品，**不放进 wiki/**——那是库内容，
+# 混进导出件会让「库里有几个页面」这类读数失准，也会被断链扫描当成页面。
+EXPORT_DIR = VAULT / '归档' / '导出'
 WEEK_TEMPLATE = TEMPLATE_DIR / '周观点模板.md'
 SIGNAL_TEMPLATE = TEMPLATE_DIR / '政策信号汇总模板.md'
 

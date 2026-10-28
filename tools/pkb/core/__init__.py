@@ -10,17 +10,18 @@
 from .paths import (                                  # noqa: F401
     VAULT, WORKSPACE, TOOLS,
     CARD_DIR, CHAIN_DIR, SIGNAL_DIR, WEEKLY_DIR, ANALYSIS_DIR,
-    OVERVIEW_DIR, TEMPLATE_DIR, RAW_DIR, ARTICLE_DIR, NOTES_DIR, CACHE_DIR,
+    OVERVIEW_DIR, TEMPLATE_DIR, RAW_DIR, ARTICLE_DIR, NOTES_DIR, CACHE_DIR, TMP_DIR,
     INDEX, AGENTS, README, LOG,
-    STATUS, LEDGER, COLLECT_LOG, CHECK_REPORT, WEEK_TEMPLATE, SIGNAL_TEMPLATE,
+    STATUS, LEDGER, COLLECT_LOG, CHECK_REPORT, ALERT, EXPORT_DIR, WEEK_TEMPLATE, SIGNAL_TEMPLATE,
     PROMPT_DIR, PROMPT_ARCHIVE,
     EXPERT_DIR, EXPERT_MD, EXPERT_SKILL, EXPERT_SCRIPTS, SKIP_DIRS,
 )
 from .fs import (                                     # noqa: F401
     md_files, read, write, digest, all_names, py_files, action_names,
+    CARD_PREFIX, card_files, card_volumes, card_parts, card_name,
 )
 from . import expert                                  # noqa: F401
-from . import web, doc                                # noqa: F401
+from . import web, doc, tmp, git, markdown           # noqa: F401
 from .fm import (                                     # noqa: F401
     FM_RE, parse_fm, set_fm_field,
 )
@@ -38,16 +39,26 @@ __all__ = [
     'VAULT', 'WORKSPACE', 'TOOLS',
     'CARD_DIR', 'CHAIN_DIR', 'SIGNAL_DIR', 'WEEKLY_DIR', 'ANALYSIS_DIR',
     'OVERVIEW_DIR', 'TEMPLATE_DIR', 'RAW_DIR', 'ARTICLE_DIR', 'NOTES_DIR', 'CACHE_DIR',
+    'TMP_DIR',
     'INDEX', 'AGENTS', 'README', 'LOG',
-    'STATUS', 'LEDGER', 'COLLECT_LOG', 'CHECK_REPORT', 'WEEK_TEMPLATE', 'SIGNAL_TEMPLATE',
+    'STATUS', 'LEDGER', 'COLLECT_LOG', 'CHECK_REPORT', 'ALERT', 'EXPORT_DIR',
+    'WEEK_TEMPLATE', 'SIGNAL_TEMPLATE',
     'PROMPT_DIR', 'PROMPT_ARCHIVE',
     'EXPERT_DIR', 'EXPERT_MD', 'EXPERT_SKILL', 'EXPERT_SCRIPTS', 'SKIP_DIRS',
     # 专家包入口形态判定（链接／副本／链错／缺失）
     'expert',
     # 抓页与附件转文本（无口径，只有机制）
     'web', 'doc',
+    # 临时目录落点（钉住 tempfile，见 tmp.py）
+    'tmp',
+    # 版本控制（只跑命令不判断，见 git.py）
+    'git',
+    # 出库方向：Markdown → HTML（见 markdown.py）
+    'markdown',
     # 读写
     'md_files', 'read', 'write', 'digest', 'all_names', 'py_files', 'action_names',
+    # 卡片发现（扁平卡与目录序列卡共用一条规则）
+    'CARD_PREFIX', 'card_files', 'card_volumes', 'card_parts', 'card_name',
     # frontmatter
     'FM_RE', 'parse_fm', 'set_fm_field',
     # markdown 与日期

@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>文档全生命周期管理评估 · 第二版 · 2026-10-28</title>
+<style>
+  :root{
+    --ink:#1a1d21; --ink2:#4a5158; --ink3:#7a828a;
+    --line:#e3e6ea; --bg:#ffffff; --panel:#f7f8fa;
+    --good:#1f7a4d; --warn:#a8620a; --bad:#b3261e; --accent:#2b5f9e;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; padding:0 0 72px; background:var(--bg); color:var(--ink);
+    font:16px/1.75 -apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:860px;margin:0 auto;padding:0 26px}
+  header{padding:56px 0 30px;border-bottom:3px solid var(--ink)}
+  .kicker{font-size:13px;letter-spacing:.14em;color:var(--ink3);text-transform:uppercase;margin-bottom:14px}
+  h1{font-size:31px;line-height:1.35;margin:0 0 16px;font-weight:700;letter-spacing:-.01em}
+  .sub{color:var(--ink2);font-size:15px;margin:0}
+  .sub b{color:var(--ink)}
+
+  .scoreboard{
+    display:grid;grid-template-columns:172px 1fr;gap:34px;align-items:center;
+    padding:34px 0;border-bottom:1px solid var(--line);
+  }
+  .total{border-right:1px solid var(--line);padding-right:20px}
+  .total .n{font-size:62px;line-height:1;font-weight:700;letter-spacing:-.03em}
+  .total .n small{font-size:20px;color:var(--ink3);font-weight:400}
+  .total .cap{font-size:13px;color:var(--ink3);margin-top:10px}
+  .delta{font-size:13px;color:var(--good);margin-top:6px;font-weight:600}
+  .bars{display:grid;gap:9px}
+  .bar{display:grid;grid-template-columns:118px 1fr 46px;gap:12px;align-items:center;font-size:13.5px}
+  .bar .lab{color:var(--ink2);text-align:right}
+  .bar .track{height:8px;background:#eceef1;border-radius:4px;overflow:hidden}
+  .bar .fill{height:100%;border-radius:4px;background:var(--accent)}
+  .bar .val{font-variant-numeric:tabular-nums;font-weight:600;text-align:right}
+
+  h2{font-size:20px;margin:52px 0 8px;padding-bottom:10px;border-bottom:1px solid var(--line);font-weight:700}
+  h2 .num{color:var(--ink3);font-weight:400;margin-right:9px;font-variant-numeric:tabular-nums}
+  p{margin:14px 0}
+  .lead{color:var(--ink2)}
+
+  table{width:100%;border-collapse:collapse;margin:18px 0;font-size:14.5px}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-size:12.5px;letter-spacing:.05em;color:var(--ink3);font-weight:600;text-transform:uppercase}
+  td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+  tr.hi td{background:#fbfcfd}
+
+  .dim{margin:26px 0 0;padding:0 0 26px;border-bottom:1px dashed var(--line)}
+  .dim:last-of-type{border-bottom:none}
+  .dim h3{font-size:17px;margin:0 0 4px;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+  .dim h3 .pts{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--ink3);font-size:14px;font-weight:400}
+  .dim h3 .pts b{color:var(--ink);font-size:18px}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:14px}
+  .cols h4{font-size:12.5px;letter-spacing:.06em;margin:0 0 8px;color:var(--ink3);text-transform:uppercase}
+  .cols ul{margin:0;padding-left:17px;font-size:14px;line-height:1.7}
+  .cols li{margin-bottom:7px}
+  .do h4{color:var(--good)}
+  .dont h4{color:var(--bad)}
+
+  .box{background:var(--panel);border-left:3px solid var(--accent);padding:16px 20px;margin:22px 0;font-size:14.5px}
+  .box p{margin:0 0 10px}
+  .box p:last-child{margin-bottom:0}
+  .box b{color:var(--accent)}
+
+  .todo{counter-reset:t;list-style:none;padding:0;margin:20px 0}
+  .todo li{
+    counter-increment:t;position:relative;padding:15px 0 15px 46px;
+    border-bottom:1px solid var(--line);font-size:15px;
+  }
+  .todo li::before{
+    content:counter(t);position:absolute;left:0;top:15px;
+    width:27px;height:27px;border-radius:50%;background:var(--ink);color:#fff;
+    font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;
+  }
+  .todo .who{display:inline-block;font-size:11.5px;padding:1px 8px;border-radius:3px;
+    background:#eceef1;color:var(--ink2);margin-left:8px;vertical-align:1px}
+  .todo .why{display:block;color:var(--ink2);font-size:13.5px;margin-top:6px}
+
+  code{font-family:"SF Mono",Menlo,Consolas,monospace;font-size:13px;background:#f0f2f4;padding:1.5px 5px;border-radius:3px}
+  footer{margin-top:64px;padding-top:22px;border-top:1px solid var(--line);font-size:13px;color:var(--ink3)}
+  @media (max-width:680px){
+    .scoreboard{grid-template-columns:1fr;gap:24px}
+    .total{border-right:none;border-bottom:1px solid var(--line);padding:0 0 20px}
+    .cols{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="kicker">第二版 · 2026-10-28 16:00</div>
+  <h1>文档全生命周期管理评估</h1>
+  <p class="sub">
+    第一版 75.3 分时，扣分集中在三处：库不在 git、一手存档不回卡片、自动化不告警。
+    这一版把这三处都动了，分数按<b>实际改动</b>重算，不是按"计划"。
+    仍未解决的也照写——<b>评估报告最没用的写法，是让读者以为已经没问题了。</b>
+  </p>
+</header>
+
+<div class="scoreboard">
+  <div class="total">
+    <div class="n">85<small>／100</small></div>
+    <div class="cap">六维等权平均</div>
+    <div class="delta">↑ 较第一版 +9.7</div>
+  </div>
+  <div class="bars">
+    <div class="bar"><span class="lab">内容与结构化</span><span class="track"><span class="fill" style="width:84%"></span></span><span class="val">84</span></div>
+    <div class="bar"><span class="lab">格式转换</span><span class="track"><span class="fill" style="width:80%"></span></span><span class="val">80</span></div>
+    <div class="bar"><span class="lab">编辑与版式</span><span class="track"><span class="fill" style="width:80%"></span></span><span class="val">80</span></div>
+    <div class="bar"><span class="lab">安全与审计</span><span class="track"><span class="fill" style="width:88%"></span></span><span class="val">88</span></div>
+    <div class="bar"><span class="lab">自动化与 AI</span><span class="track"><span class="fill" style="width:90%"></span></span><span class="val">90</span></div>
+    <div class="bar"><span class="lab">归档与生命周期</span><span class="track"><span class="fill" style="width:88%"></span></span><span class="val">88</span></div>
+  </div>
+</div>
+
+<h2><span class="num">01</span>分数怎么变的</h2>
+
+<table>
+  <thead><tr><th>维度</th><th>一版</th><th>二版</th><th>支撑这一分的实际改动</th></tr></thead>
+  <tbody>
+    <tr class="hi"><td>内容获取与结构化</td><td class="num">72</td><td class="num">84</td><td>36 处一手存档回流到卡片（16 张卡），判据报「未回流」；文号待补从 16 降到 11，每一条都有两处以上独立来源</td></tr>
+    <tr><td>格式转换</td><td class="num">68</td><td class="num">80</td><td>补上出库方向：md→HTML（表格／标题／列表／callout／wikilink 全保留）、md→docx，7 份导出成品</td></tr>
+    <tr><td>编辑与版式</td><td class="num">76</td><td class="num">80</td><td>新增两条质量判据（缺「政策原文」、首句照抄标题）；体积超限时输出各节字符分布</td></tr>
+    <tr><td>安全合规与审计</td><td class="num">79</td><td class="num">88</td><td>库纳入 git（2 次提交、210 个文件）；新增版本控制检查与历史查询动作。<b>但从未推送远程</b></td></tr>
+    <tr class="hi"><td>自动化与 AI 增强</td><td class="num">80</td><td class="num">90</td><td>告警并进 <code>check</code>：三个自动化本来就会跑它，于是<b>不用改提示词就获得了告警</b>；<code>status</code> 直接给出「数据是否当天」</td></tr>
+    <tr><td>归档与生命周期</td><td class="num">77</td><td class="num">88</td><td>生成 <code>归档/index.md</code>；归档内页面进断链扫描；AGENTS 新增保留策略，判据是「删了还能重建吗」</td></tr>
+  </tbody>
+</table>
+
+<div class="box">
+  <p><b>最值得记的一件事：判据把正确的做法判成了错误。</b>
+  第一版给 <code>check_vcs</code> 写的判据是「<code>raw/articles/</code> 被跟踪就是排除规则失效」。几小时后我决定把它纳入 git——因为实测每份平均 12.7 KB、全部 544 KB，而第一版说它「体积远大于其余全部」，那个数字没量过。</p>
+  <p>判据立刻报红。改法不是改判据迁就结论，而是换一个更准的问题：<b>「<code>.gitignore</code> 声明要排除的，实际有没有被跟踪」</b>（<code>git ls-files -ci</code>）。规则住在 <code>.gitignore</code> 里，判据只核对声明与事实是否一致。</p>
+  <p>同一类错误在库里已经出现过一次：模板写了「文号」栏却没人写过，而 <code>check</code> 九项一直全绿。<b>判据记住的如果是某一个具体决定，那个决定一改，判据就开始说反话。</b></p>
+</div>
+
+<h2><span class="num">02</span>逐维：做到了什么，扣在哪</h2>
+
+<div class="dim">
+  <h3>内容获取与结构化 <span class="pts"><b>84</b> / 100</span></h3>
+  <div class="cols">
+    <div class="do"><h4>做到了</h4><ul>
+      <li>37 份一手存档，36 处已回链到对应卡片小节的「政策原文」行；此前 37 份里只有 1 张卡引用</li>
+      <li>回链判据进了 <code>check_archives</code>，现在报「未回流 0」；<code>fix</code> 能自动补，且幂等</li>
+      <li>157 个政策小节全部有文号栏：143 节填实、3 节按类型标「无文号」、11 节待补</li>
+      <li>补文号时逐条要两处以上独立来源（政府网 + 部委官网／新华社），只有一处的不填</li>
+    </ul></div>
+    <div class="dont"><h4>扣在哪</h4><ul>
+      <li>11 节文号仍待补。其中「国防动员法（2026 修订）」搜不到任何 2026 年修订记录，2026 年立法计划里也没有——<b>可能是卡片本身记错了</b>，不该硬填</li>
+      <li>71 处来源标注「待核／未能核实」，换回官方链接是纯体力活</li>
+      <li>157 个政策小节对应 37 份存档，约四分之三的政策没有一手原文</li>
+    </ul></div>
+  </div>
+</div>
+
+<div class="dim">
+  <h3>格式转换 <span class="pts"><b>80</b> / 100</span></h3>
+  <div class="cols">
+    <div class="do"><h4>做到了</h4><ul>
+      <li>此前只有入库方向（网页→md），出库为零；现在 <code>run.py render</code> 能出可打印 HTML 与 docx</li>
+      <li>HTML 保留表格、标题层级、列表、callout、<code>[[wikilink]]</code>；7 份成品零残留 Markdown 语法</li>
+      <li>输出落 <code>归档/导出/</code>，不进版本库（纯派生物，随时可重生成）</li>
+    </ul></div>
+    <div class="dont"><h4>扣在哪</h4><ul>
+      <li>docx 走系统自带 <code>textutil</code>，<b>表格会退化成段落</b>——本机没有 pandoc 与 python-docx</li>
+      <li>没有 PDF 出口：<code>cupsfilter</code> 不支持 HTML 输入，<code>qlmanage</code> 在沙箱里起不来</li>
+      <li>HTML 只核了结构（表格数、标题数、无残留语法），<b>没核像素</b>——版式实际好不好看还没人看过</li>
+    </ul></div>
+  </div>
+</div>
+
+<div class="dim">
+  <h3>编辑与版式 <span class="pts"><b>80</b> / 100</span></h3>
+  <div class="cols">
+    <div class="do"><h4>做到了</h4><ul>
+      <li>两条新判据钉住"写了但没内容"：缺「政策原文」行、首句照抄小节标题（现库中 0 处命中）</li>
+      <li>卡片超 2 万字符时输出各节字符分布，指出哪一节最该外移</li>
+      <li>模板合规判据上一版已补齐：callout 五项、六个小标题、文号、生效日期、影响判断三行</li>
+    </ul></div>
+    <div class="dont"><h4>扣在哪</h4><ul>
+      <li>4 张卡超 2 万字符（金融 33.7K、出口管制 32.8K、医疗健康 29.6K、对外贸易 27.3K），<b>只报了警没治理</b></li>
+      <li>治理要动结构（把旧政策小节移进归档），AGENTS 规定这类变更须你确认，所以没动</li>
+      <li>多人／多自动化并发改同一张卡时没有约定，目前靠时间窗错开</li>
+    </ul></div>
+  </div>
+</div>
+
+<div class="dim">
+  <h3>安全合规与审计 <span class="pts"><b>88</b> / 100</span></h3>
+  <div class="cols">
+    <div class="do"><h4>做到了</h4><ul>
+      <li>库纳入 git：2 次提交、210 个文件有历史；此前改错只能整库从 tar 倒退</li>
+      <li>新增 <code>check_vcs</code>（有无历史／声明的排除是否生效／久未提交）与 <code>history</code>（某文件改过几次、某条口径哪次改的）</li>
+      <li>能力当天就被验证过一次：建库十分钟后我误删 <code>AGENTS.md</code> 等四个文件，靠刚建的对象库一条命令全取回</li>
+    </ul></div>
+    <div class="dont"><h4>扣在哪</h4><ul>
+      <li><b>只有本地一份。</b><code>git init</code> 之后没有配任何远程（<code>.git/config</code> 里没有 <code>[remote]</code> 段），<code>git push</code> 因此报 <code>'origin' does not appear to be a git repository</code>。工作区那个 <code>policy-analysis</code> 是另一个仓库、另一段历史，不能直接共用</li>
+      <li>也就是说：改错能回滚了，<b>硬盘坏了还是全没</b>。异地副本这一项目前是 0</li>
+      <li>CI 只在空库上跑 pytest，不跑真库体检</li>
+    </ul></div>
+  </div>
+</div>
+
+<div class="dim">
+  <h3>自动化与 AI 增强 <span class="pts"><b>90</b> / 100</span></h3>
+  <div class="cols">
+    <div class="do"><h4>做到了</h4><ul>
+      <li><b>告警接进了 <code>check</code></b>：全量跑完自动按「要处置／要知道」两档写 <code>wiki/总览/告警.md</code>，并在终端打前几条。三个自动化本来就会跑 <code>check</code>，因此<b>没有改一行提示词就获得了告警</b></li>
+      <li>告警复用 <code>check</code> 已跑出的结果，不重跑十项；<code>--only</code> 时不写——结果不全，写出来会把其他问题从页面上抹掉</li>
+      <li><code>status</code> 直接给出「数据截止：当天／不是当天」，后者明确要求报告标注截止日</li>
+      <li>原来的 <code>preflight</code> 归并进 <code>status</code>：一条只在该用的时候才想得起来的命令，等于没有</li>
+    </ul></div>
+    <div class="dont"><h4>扣在哪</h4><ul>
+      <li>失败仍不会主动通知：告警页是异步的，得有人去翻</li>
+      <li>三个自动化之间没有超时／重试约定，一个挂住另一个照跑</li>
+      <li>告警的「要知道」判据靠摘要行里的关键词（<code>0 新增</code> 等），新写一种措辞就可能漏判</li>
+    </ul></div>
+  </div>
+</div>
+
+<div class="dim">
+  <h3>归档与生命周期 <span class="pts"><b>88</b> / 100</span></h3>
+  <div class="cols">
+    <div class="do"><h4>做到了</h4><ul>
+      <li>生成 <code>归档/index.md</code>：原文存档、备份包、导出件各一节，此前归档是一个没有目录的柜子</li>
+      <li>归档内页面纳入断链扫描，37 条原文链接全部可解析</li>
+      <li>AGENTS 新增保留策略：判据是「删了还能重建吗」，不设保留天数——按时间淘汰等于按重要性淘汰，这两件事无关</li>
+      <li>策略一落地就修正了一处：<code>raw/articles/</code> 从「排除」改为「纳入」，因为体积实测只有 544 KB</li>
+    </ul></div>
+    <div class="dont"><h4>扣在哪</h4><ul>
+      <li><code>归档/导出/</code> 的"可随时清空"只是约定，没有脚本执行，也没有验证过清空后能否完整重生成</li>
+      <li>备份 tar 从此不再新增（git 已接管），但「基线之前的包要留」没有判据盯着</li>
+      <li>生命周期靠 <code>ledger</code> 推，但归档副本是否完整仍要手工核</li>
+    </ul></div>
+  </div>
+</div>
+
+<h2><span class="num">03</span>到 90 分还差什么</h2>
+
+<p class="lead">剩下这 5 分，不是我改几行代码就能拿到的。三件事各有归属，第 1、2 件卡在你手上。</p>
+
+<ol class="todo">
+  <li>给资料库配一个远程仓库并首次推送<span class="who">需要你</span>
+    <span class="why">这一步能把「安全与审计」从 88 推到 95 以上，也是全库唯一还把「本机一份」当备份的地方。建议新建一个只放资料的私有仓库（如 <code>policy-vault</code>），<code>git remote add origin …</code> 后 <code>git push -u origin main</code>。不要和现有的 <code>policy-analysis</code> 共用——那是另一段历史，硬合会重排提交线。若 SSH key 没加到账号，换 HTTPS + token 也行。</span></li>
+  <li>决定 4 张超限卡怎么处置<span class="who">需要你点头</span>
+    <span class="why">金融、出口管制、医疗健康、对外贸易四张卡都在 27K–34K 字符。可选：旧政策小节整节移进 <code>归档/</code> 并在卡里留一行索引，或者原地压缩、只留结论与链接。前者动结构（AGENTS 要求先问），后者不动结构但会删内容。你选哪个我照做。</span></li>
+  <li>剩余 11 个文号 + 71 处来源<span class="who">我可以继续</span>
+    <span class="why">文号要逐条回部委官网核，每条至少两处独立来源；「国防动员法」那条建议先核卡片本身记得对不对。71 处来源换官方链接更慢，但可以按政策链分批。这两项做完，「内容与结构化」能到 92 左右。</span></li>
+</ol>
+
+<div class="box">
+  <p><b>为什么不直接写 90。</b>这份评估的用处是让人知道哪里还能塌，不是拿来自我感觉良好的。第一版 75.3 分里最值钱的一句是「37 份存档仅 1 张卡引用」——它直接指出了下一步做什么；如果当时写成 90，那句话就不会存在。</p>
+  <p>上面三件事全部做完，这个库确实是 90 分水平。其中两件取决于你。</p>
+</div>
+
+<h2><span class="num">04</span>本轮顺带修掉的环境问题</h2>
+
+<table>
+  <thead><tr><th>问题</th><th>成因</th><th>处置</th></tr></thead>
+  <tbody>
+    <tr><td>库根目录不断出现 8 字符随机空文件</td><td>Python 启动时探临时目录，探测要求"能建能删"，而删除被拦，于是回落到 cwd 留一个空文件</td><td>新增 <code>core/tmp.py</code>，把 <code>tempfile</code> 钉到工作区 <code>.cache/tmp</code>，探测不再发生</td></tr>
+    <tr><td>同样的问题污染资料库根目录</td><td>有人在库目录下跑脚本</td><td>清理后加 <code>.gitignore</code> 排除；工作区侧也排除了 <code>????????</code></td></tr>
+    <tr><td>本次会话中删除与改名全部失败</td><td>安全中心拦 <code>unlink</code>／<code>rename</code>，连安全删除工具自己的临时目录都建不起来</td><td><b>未解决</b>——环境侧故障，需在普通终端操作。已记入任务台账</td></tr>
+  </tbody>
+</table>
+
+<footer>
+  第二版 · 2026-10-28 16:00 · 六维等权平均 85 分<br>
+  验证读数：<code>run.py check</code> 十一项全 0 ／ <code>pyflakes</code> 0 ／
+  <code>pytest</code> 302 passed。<b>但这一条要打个折</b>：本次会话到后半程环境故障（删除与改名被拦），
+  113 例依赖临时目录的用例报 <code>PermissionError</code>，跑不全；已用关闭输出捕获＋显式绑定 <code>tempdir</code>
+  的方式单独验证本轮新写的三个测试文件（30 passed）。<b>「302 passed」是环境正常时的读数，不是本次会话实测的全量结果</b>。
+</footer>
+
+</div>
+</body>
+</html>

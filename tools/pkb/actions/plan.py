@@ -27,6 +27,7 @@ import json
 import datetime
 
 from pkb.core import (CARD_DIR, SIGNAL_DIR, COLLECT_LOG, LEDGER, SECTION_HEAD,
+                      card_files, card_parts, card_name,
                  read as lib_read, md_section_lines, table_rows, parse_date,
                  span, iso_week)
 from pkb.domain import STANCES, STANCE_MIN
@@ -72,32 +73,39 @@ def scan_cards():
     state: a 完整 / b 待补全 / c 无观点节（判定在 domain.fields.views_state，
            与 check_views 同一份实现——两处各写一遍，改口径就要改两处）
     kind:  b→'占位'  c→'无标题' 或 '缺辨析'
+
+    卡片发现走 `card_files`（2026-10-28）：拆成序列卡后，只扫扁平目录会让四张
+    大卡里的欠账**一条也派不出去**，而 plan 的输出只会显示「活变少了」。
     """
     out = []
-    for p in sorted(CARD_DIR.glob('*.md')):
+    for p in card_files(CARD_DIR):
         if p.name.startswith('.'):
             continue
-        card = p.stem.replace('政策卡片-', '')
-        text = read(p)
-        hits = list(SECTION_HEAD.finditer(text))
-        for i, m in enumerate(hits):
-            end = hits[i + 1].start() if i + 1 < len(hits) else len(text)
-            chunk = text[m.end():end]
-            has_v = '**各方观点**' in chunk
-            has_d = '**观点辨析**' in chunk
-            ph = views_state(chunk) == 'b'
-            if has_v and has_d and not ph:
-                st, kind = 'a', ''
-            elif has_v and ph:
-                st, kind = 'b', '占位'
-            elif has_v:
-                st, kind = 'c', '缺辨析'
-            else:
-                st, kind = 'c', '无标题'
-            out.append({'card': card, 'date': m.group(1),
-                        'title': m.group(2), 'state': st, 'kind': kind,
-                        'org': short_org(chunk)})
+        card = card_name(p)
+        for part in card_parts(p):
+            text = read(part)
+            hits = list(SECTION_HEAD.finditer(text))
+            for i, m in enumerate(hits):
+                end = hits[i + 1].start() if i + 1 < len(hits) else len(text)
+                out.append(_card_state(card, m, text[m.end():end]))
     return out
+
+
+def _card_state(card, m, chunk):
+    """一个小节的观点状态 → {card, date, title, state, kind, org}。"""
+    has_v = '**各方观点**' in chunk
+    has_d = '**观点辨析**' in chunk
+    ph = views_state(chunk) == 'b'
+    if has_v and has_d and not ph:
+        st, kind = 'a', ''
+    elif has_v and ph:
+        st, kind = 'b', '占位'
+    elif has_v:
+        st, kind = 'c', '缺辨析'
+    else:
+        st, kind = 'c', '无标题'
+    return {'card': card, 'date': m.group(1), 'title': m.group(2),
+            'state': st, 'kind': kind, 'org': short_org(chunk)}
 
 
 def short_org(chunk):

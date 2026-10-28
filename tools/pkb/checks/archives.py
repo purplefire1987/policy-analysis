@@ -21,8 +21,9 @@ import difflib
 import re
 
 from pkb.core import (ARTICLE_DIR, CARD_DIR, SIGNAL_DIR, parse_date, parse_fm, read,
-                      Result, Verdict)
-from pkb.domain import ARCHIVE_DATE_TOLERANCE, LEVELS
+                      card_files, card_parts, card_name,
+                      Result, Verdict, write)
+from pkb.domain import ARCHIVE_DATE_TOLERANCE, LEVELS, retired
 
 ORIGIN = LEVELS[0]      # 口径只从 domain 取，不写裸字符串
 
@@ -40,20 +41,24 @@ def norm(s):
 
 
 def card_index():
-    """卡片小节清单：[{card, date, no, title, key}]"""
+    """卡片小节清单：[{card, date, no, title, key, chunk, part}]
+
+    `part` 是小节实际落在哪个文件：序列卡（2026-10-28）的小节在卷里，不在主卡。
+    补链时必须写回该小节所在的那个文件——写回主卡等于把链接加到一张没有小节的页上。
+    """
     out = []
-    if not CARD_DIR.exists():
-        return out
-    for p in sorted(CARD_DIR.glob('*.md')):
-        card = p.stem.replace('政策卡片-', '')
-        text = read(p, '')
-        for m in SEC.finditer(text):
-            end = text.find('\n### ', m.end())
-            chunk = text[m.end():end if end != -1 else len(text)]
-            n = NO.search(chunk)
-            out.append({'card': card, 'date': parse_date(m.group(1)),
-                        'no': norm(n.group(1)) if n else '',
-                        'title': m.group(2).strip(), 'key': norm(m.group(2))})
+    for p in card_files(CARD_DIR):
+        card = card_name(p)
+        for part in card_parts(p):
+            text = read(part, '')
+            for m in SEC.finditer(text):
+                end = text.find('\n### ', m.end())
+                chunk = text[m.end():end if end != -1 else len(text)]
+                n = NO.search(chunk)
+                out.append({'card': card, 'date': parse_date(m.group(1)),
+                            'no': norm(n.group(1)) if n else '',
+                            'title': m.group(2).strip(), 'key': norm(m.group(2)),
+                            'chunk': chunk, 'part': part})
     return out
 
 
@@ -163,6 +168,82 @@ def misplaced():
     return out
 
 
+def unlinked():
+    """一手存档建好了，卡片却没指过去：[{card, title, file}]。
+
+    为什么这算问题（2026-10-28）：`raw/articles/` 的 37 份原文就是「链接断了还查得到」
+    的那一份备份，卡片不指过去，这个价值一分没兑现——盘点时只有 1 张卡提到过存档。
+    判据只认**唯一匹配**（与 scan 同一套 match），匹配不上或有多候选都不报：
+    那属于「该链哪一条还没定」，不是「漏了」。
+    """
+    idx, out = card_index(), []
+    for arc in archives():
+        sec = match(arc, idx)
+        if sec and arc['file'][:-3] not in sec['chunk']:
+            out.append({'card': sec['card'], 'title': sec['title'],
+                        'file': arc['file'], 'part': sec['part']})
+    return out
+
+
+def _append_link(chunk, filename):
+    """在「政策原文」那一行末追加 [[存档|原文存档]]；没有这一行就不硬插。"""
+    stem = filename[:-3]
+    for line in chunk.split('\n'):
+        if '政策原文' in line and stem not in line:
+            new = line.rstrip() + f' ｜ [[{stem}|原文存档]]'
+            return chunk.replace(line, new, 1)
+    return None
+
+
+def _sec_chunk(text, title):
+    """在一张卡的正文里按小节标题取 chunk；取不到返回 None。"""
+    for m in SEC.finditer(text):
+        if m.group(2).strip() == title:
+            end = text.find('\n### ', m.end())
+            return text[m.end():end if end != -1 else len(text)]
+    return None
+
+
+def run_fix():
+    """补链（`run.py fix` 的一项）：唯一匹配才改，多候选跳过。返回 (处数, 行)。
+
+    每条都重读一次该卡：前一条已经把文件写过了，拿旧 chunk 去 replace 会落空。
+    序列卡的小节在卷里——写回 `item['part']` 指的那个文件，不是主卡。
+    """
+    n, lines = 0, []
+    for item in unlinked():
+        p = item['part']
+        text = read(p, '')
+        chunk = _sec_chunk(text, item['title'])
+        if not chunk:
+            continue
+        new = _append_link(chunk, item['file'])
+        if not new:
+            continue
+        write(p, text.replace(chunk, new, 1))
+        n += 1
+        lines.append(f"补链：{item['card']} / {item['title'][:22]} ← {item['file'][:34]}")
+    return n, lines
+
+
+def retired_in_place():
+    """已终止却还留在卡里的小节：[{card, title, state}]。
+
+    「移入归档」只有一个触发条件（2026-10-28）：政策已终止——不按时间。
+    判定不靠日期、不靠人记，靠小节里自己声明的那一行 `> **状态**：已废止（被 … 取代）`；
+    这条判据要核的就是**声明有没有被执行**：写了已终止却还躺在卡片目录里，
+    说明「该搬的没搬」，而清单（`归档/index.md`）会一直把它算作在用政策。
+
+    不阻断（本项恒 exit 0）：搬是人的动作，改哪一节、留哪一行指针都得人定。
+    """
+    out = []
+    for sec in card_index():
+        hit = retired(sec['chunk'])
+        if hit:
+            out.append({'card': sec['card'], 'title': sec['title'], 'state': hit[0]})
+    return out
+
+
 def run(argv=None):
     ap = argparse.ArgumentParser(description='卡片与一手存档的日期交叉核对（只报不阻断）')
     ap.parse_args(list(argv or []))
@@ -171,14 +252,21 @@ def run(argv=None):
 
     same, bad, n = scan()
     bad += misplaced()
-    if not n and not bad:
-        msg = '一手存档 0 份（raw/articles 为空或不存在），本项无结论'
-        return Result(Verdict.PASS, msg, [msg])
+    left = unlinked()
+    gone = retired_in_place()
     lines = ['=== 卡片 × 一手存档 ===',
-             f'原文 {n} 份：日期一致 {same}，问题 {len(bad)}']
+             f'原文 {n} 份：日期一致 {same}，问题 {len(bad)}，卡片未引 {len(left)}']
+    if not n:
+        # 存档目录空着时不能整项「无结论」：待归档是**卡片侧**的事实，与存档无关。
+        # 早退会把「已终止没搬」一并吞掉，而那正是这条判据存在的理由。
+        lines.append('（raw/articles 为空或不存在——日期核对无结论；待归档照常核）')
     lines += [f'  · {why}' for why in bad]
-    if not bad:
+    lines += [f'  · 未回流：{x["card"]} / {x["title"][:20]} ← {x["file"][:38]}' for x in left]
+    lines += [f'  · 待移入归档：{x["card"]} / {x["title"][:24]}（{x["state"]}）'
+              for x in gone]
+    if not bad and n:
         lines.append('（只核「两份落盘物是否自洽」；两边一起错时本项查不出，外部核对仍在任务台账）')
-    mark = '✅' if not bad else '⚠️'
-    summary = f'一手存档 {n} 份：日期一致 {same} · 问题 {len(bad)} {mark}'
+    mark = '✅' if not bad and not left else '⚠️'
+    summary = (f'一手存档 {n} 份：日期一致 {same} · 问题 {len(bad)} · '
+               f'未回流 {len(left)} · 待归档 {len(gone)} {mark}')
     return Result(Verdict.PASS, summary, lines)

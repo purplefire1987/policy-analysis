@@ -220,3 +220,83 @@ class Test模板合规(unittest.TestCase):
         ok = GOOD.replace('- 一句话判断：略。', '- 一句话判断：略。\n\n（以下为依据）\n- **财政端**：减少支出。')
         _b, sec = self.judge(ok)
         self.assertEqual(sec, [])
+
+    def test_缺政策原文要报(self):
+        _b, sec = self.judge(GOOD.replace(' ｜ [政策原文](https://example.gov.cn/a)', ''))
+        self.assertTrue(any('政策原文' in m for m in sec), sec)
+
+    def test_核心要点照抄标题只提示不阻断(self):
+        _b, sec = self.judge(GOOD.replace('1. 甲。', '某政策'))
+        self.assertEqual(sec, [], '照抄标题是质量问题，不该判成结构错误')
+        self.assertTrue(any('复述' in m for _o, m in S.warns.get('3-质量', [])),
+                        S.warns.get('3-质量'))
+
+
+class Test序列卡(unittest.TestCase):
+    """序列卡：主卡索引、卷名、卷内容三者必须说同一段时间（2026-10-28）。
+
+    这三条都是「拆完才对得上」的判据——拆卷那一刻是对的，之后每一次新增都可能
+    让它们悄悄错位：新加一卷忘了进索引，读者从主卡永远找不到；卷名写着 2026-10
+    而里面躺着 9 月的政策，按日期找的人会直接略过。**都不会报错，只会让人找不到。**
+    """
+
+    def build(self, vols, listed):
+        """vols: {卷名: [日期, ...]}；listed: 主卡索引里列出的卷名。"""
+        d = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__('shutil').rmtree(d, ignore_errors=True))
+        cd = d / '政策卡片'
+        card = cd / '政策卡片-能源'
+        card.mkdir(parents=True)
+        main = card / '政策卡片-能源.md'
+        rows = '\n'.join(f'| [[政策卡片-能源/{v}]] | x | 1 |' for v in listed)
+        main.write_text('---\n类型: 政策卡片\n---\n\n# 能源\n\n## 政策演进\n\n' + rows + '\n',
+                        encoding='utf-8')
+        per = []
+        for name, dates in vols.items():
+            f = card / f'{name}.md'
+            body = '\n'.join(f'### {dt} · 某政策\n\n正文\n' for dt in dates)
+            f.write_text('# 能源\n\n## 政策演进\n\n' + body, encoding='utf-8')
+            per.append({'path': f, 'size': len(body), 'secs': S.extract_sections(body)})
+            per[-1]['secs'] = per[-1]['secs'][0]
+        S.issues.clear()
+        S.warns.clear()
+        S._check_series('能源', main, main.read_text(encoding='utf-8'), per)
+        return [m for _o, m in S.issues.get('7-序列', [])]
+
+    def test_对得上不报(self):
+        self.assertEqual(self.build({'2026-10': ['2026-10-09'], '2025-11至2026-09': ['2026-01-06']},
+                                    ['2026-10', '2025-11至2026-09']), [])
+
+    def test_卷没进索引要报(self):
+        got = self.build({'2026-10': ['2026-10-09'], '2025-11至2026-09': ['2026-01-06']},
+                         ['2026-10'])
+        self.assertTrue(any('没进主卡索引' in m for m in got), got)
+
+    def test_索引写了不存在的卷要报(self):
+        got = self.build({'2026-10': ['2026-10-09']}, ['2026-10', '2026-11'])
+        self.assertTrue(any('没有这个文件' in m for m in got), got)
+
+    def test_卷名区间与内容不符要报(self):
+        """卷名叫 2026-10，里面却有 9 月的政策——按日期找会漏掉它。"""
+        got = self.build({'2026-10': ['2026-10-09', '2026-09-30']}, ['2026-10'])
+        self.assertTrue(any('超出卷名区间' in m for m in got), got)
+
+    def test_卷名不是日期区间要报(self):
+        got = self.build({'第一卷': ['2026-10-09']}, ['第一卷'])
+        self.assertTrue(any('不是日期区间' in m for m in got), got)
+
+
+class Test卡片发现(unittest.TestCase):
+    """扁平卡与目录卡都要被发现——漏一种，那一类卡就完全不进检查。"""
+
+    def test_两种形态都算一张卡(self):
+        from pkb.core import card_files
+        d = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__('shutil').rmtree(d, ignore_errors=True))
+        (d / '政策卡片-甲.md').write_text('# 甲', encoding='utf-8')
+        (d / '政策卡片-乙').mkdir()
+        (d / '政策卡片-乙' / '政策卡片-乙.md').write_text('# 乙', encoding='utf-8')
+        (d / '政策卡片-乙' / '2026-10.md').write_text('# 卷', encoding='utf-8')
+        names = sorted(p.name for p in card_files(d))
+        self.assertEqual(names, ['政策卡片-乙.md', '政策卡片-甲.md'],
+                         '卷不是独立卡片，不该出现在卡片清单里')

@@ -9,7 +9,7 @@
 
 用法
 ----
-    python3 tools/run.py status     当前状态（采到哪天 / 跑没跑 / 修没修 + 下一步）   恒 exit 0
+    python3 tools/run.py status     当前状态（采到哪天 / 数据是否当天 / 跑没跑 / 修没修）   恒 exit 0
     python3 tools/run.py check      全量自检                                          有问题 exit 1
     python3 tools/run.py fix        一次性修复（所有能自动修的，一次改完）             恒 exit 0
     python3 tools/run.py plan       派活清单（本轮该做什么，按执行顺序）               恒 exit 0
@@ -17,6 +17,11 @@
     python3 tools/run.py fetch      抓一手源：政策原文落进 raw/articles（默认今天+昨天） 欠账列明细 exit 0
     python3 tools/run.py link       把专家包入口接回本体（符号链接，杜绝副本漂移）   有漂移 exit 1
     python3 tools/run.py sources    来源合规扫描（--apply 才写盘）                     有问题 exit 1
+    python3 tools/run.py render     出库：导出 HTML／docx（落 归档/导出/）            恒 exit 0
+    python3 tools/run.py alert      生成告警页（要处置／要知道两档）                   恒 exit 0
+    python3 tools/run.py preflight  同 status（名字保留，实质已并入）                 恒 exit 0
+    python3 tools/run.py archive    生成 归档/index.md                                恒 exit 0
+    python3 tools/run.py history    翻 git 历史（--word 查这句话哪次改的）             无 git exit 2
     python3 tools/run.py list       列出包内检查项、动作与用途（不用记模块名）
 
 参数透传（提示词里因此不必再写具体模块路径）
@@ -38,9 +43,17 @@
 """
 import sys
 
-from pkb.actions import (check, fetch, fix, ledger, link, plan, query, recent,
-                         sources, status, trace, week)
+from pkb.core import tmp
+
+from pkb.actions import (alert, archive, check, fetch, fix, history, ledger, link,
+                         plan, preflight, query, recent, render, sources, status,
+                         trace, week)
 from pkb.actions import list as listing
+
+# 临时目录钉在工作区（见 pkb/core/tmp.py）：`tempfile` 默认把 cwd 当最后候选，
+# 探测失败时就在**当前目录**留一个随机名空文件——库根目录那批就是这么长出来的。
+# 在这里调用而不是各动作各调一次：run.py 是唯一入口，钉一次全局生效。
+tmp.ensure()
 
 USAGE = __doc__
 
@@ -53,6 +66,11 @@ ACTIONS = {
     'query':   (query.run,   '查库：按词／链／时间窗检索，给文件与行号（只检索不判断；--notes 连笔记）'),
     'trace':   (trace.run,   '一条政策的全链：卡／链／信号／一手存档，只连关系不下结论'),
     'recent':  (recent.run,  '近 N 天新增了什么（政策小节／信号条目／人的笔记）'),
+    'history': (history.run, '翻 git 历史：某文件改过几次／这条口径哪次改的（--word）'),
+    'render':  (render.run,  '出库：导出为 HTML／docx（自带版式，落 归档/导出/）'),
+    'alert':   (alert.run,   '生成告警页：要处置／要知道两档（覆盖写 wiki/总览/告警.md）'),
+    'archive': (archive.run, '生成 归档/index.md：原文存档、备份包、导出件各一节'),
+    'preflight': (preflight.run, '同 status：名字保留，判据已并入（不再单列一件事）'),
     'fetch':   (fetch.run,   '抓一手源：卡片里的政策原文落进 raw/articles（默认今天+昨天）'),
     'ledger':  (ledger.run,  '台账清理：到期归档／停滞退回（默认只看，--apply 写盘）'),
     'link':    (link.run,    '专家包入口接回本体（符号链接，--check 只核对）'),

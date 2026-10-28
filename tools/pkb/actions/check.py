@@ -2,10 +2,11 @@
 # -*- coding: utf-8 -*-
 """动作：check —— 全量自检。
 
-三件事，顺序不能换：
+四件事，前两件的顺序不能换：
 1. 先刷快照（dry-run 比对）：结构检查读的是 index 的统计，快照旧了会报假警；
 2. 按注册表逐项跑检查，取各自的一句话结论；
-3. 聚合退出码：任一项 FAIL 即 1；参数没人认领即 2（并明说结论不含该范围）。
+3. 全量跑完顺手更新告警页（复用第 2 步的结果，不重跑；`--only` 时不写，见 write_alert）；
+4. 聚合退出码：任一项 FAIL 即 1；参数没人认领即 2（并明说结论不含该范围）。
 
 输出详略只有这一层决定（摘要 / 14 行 / 全量），checks 自己不打印。
 """
@@ -15,6 +16,7 @@ from pkb.core import Result, Verdict, banner
 from pkb.checks import REGISTRY
 
 from . import _snapshot as snapshot
+from . import alert
 from ._proc import capture
 
 SUMMARY_MARK = '▸摘要:'          # 与 core.report 同一契约，这里只用于回显明细尾部
@@ -139,6 +141,29 @@ def conclude(bad, missed):
     return 0
 
 
+def write_alert(results):
+    """全量跑完顺手更新告警页：**复用上面的结果，不重跑十项**。
+
+    为什么并进 check 而不是让自动化多跑一条命令：三个自动化本来就会跑 check，
+    多一条命令就多一个忘记的理由，而「忘记跑告警」的后果是问题只在终端里出现过一次。
+    也因此只在全量时写——`--only vcs` 时结果不全，写出来会把其他问题从页面上抹掉，
+    那正好是这一页最该防的事（**看起来是新的**）。
+    """
+    hard, soft = alert.collect(results)
+    ok = alert.save(hard, soft)
+    print()
+    print(f'告警：要处置 {len(hard)} 条 · 要知道 {len(soft)} 条'
+          + ('' if ok else '（告警页写不进去，以上即本次结论）'))
+    for m in hard[:3]:
+        print('  ✗ ' + m)
+    if len(hard) > 3:
+        print(f'  …另 {len(hard) - 3} 条见 wiki/总览/告警.md')
+    for m in soft[:2]:
+        print('  · ' + m)
+    if len(soft) > 2:
+        print(f'  …另 {len(soft) - 2} 条见 wiki/总览/告警.md')
+
+
 def run(rest=None):
     only, full, rest = parse_args(rest)
     banner('全量自检' if not only else f'自检（只跑匹配 {only} 的脚本）')
@@ -152,10 +177,11 @@ def run(rest=None):
     if only is None:
         run_snapshot()
 
-    bad, routed = [], set()
+    bad, routed, seen = [], set(), []
     for i, spec in enumerate(specs, 1):
         result, got = run_one(i, spec, rest, full)
         routed |= got
+        seen.append((spec.name, result, ''))
         if result.code != 0:
             bad.append(spec.name)
 
@@ -164,5 +190,8 @@ def run(rest=None):
         print(f'\n⚠ 参数没有任何检查项认领：{"、".join(sorted(missed))}')
         print('   可用：--since YYYY-MM-DD（信号窗口）／--week YYYY-Www 或裸周号（周观点）')
         print('   本次运行的结论**不含**你要的那个窗口——别拿 exit 0 当它已通过。')
+
+    if only is None:
+        write_alert(seen)
 
     return conclude(bad, missed)

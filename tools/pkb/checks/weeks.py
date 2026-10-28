@@ -16,7 +16,8 @@ import datetime
 import difflib
 import re
 
-from pkb.core import CARD_DIR, WEEKLY_DIR, Result, Verdict
+from pkb.core import (CARD_DIR, WEEKLY_DIR, read,
+                      card_files, card_parts, card_name, Result, Verdict)
 from pkb.domain import FIELD_MAP, IMPACT_SINCE, IMPACTS, LEGACY_WEEKS, STAT_DOMAINS
 
 
@@ -65,13 +66,14 @@ def similarity(a, b):
 
 
 def load_cards():
-    """返回 [(date, title, card), ...]"""
+    """返回 [(date, title, card), ...]——含序列卡的卷（否则大卡的素材全漏）。"""
     items = []
-    for f in sorted(CARD_DIR.glob('*.md')):
-        card = f.stem.replace('政策卡片-', '')
-        txt = f.read_text(encoding='utf-8')
-        for m in re.finditer(r'^### (\d{4}-\d{2}-\d{2}) · (.+)$', txt, re.M):
-            items.append((m.group(1), m.group(2).strip(), card))
+    for f in card_files(CARD_DIR):
+        card = card_name(f)
+        for part in card_parts(f):
+            txt = read(part, '')
+            for m in re.finditer(r'^### (\d{4}-\d{2}-\d{2}) · (.+)$', txt, re.M):
+                items.append((m.group(1), m.group(2).strip(), card))
     return items
 
 

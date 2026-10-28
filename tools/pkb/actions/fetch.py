@@ -173,7 +173,12 @@ def fname(e):
 
 
 def fetch_attachments(atts, idx, tmpdir):
-    """下载附件并转文本若干段。返回 (markdown 片段, 转成的份数, 未转的格式集合)。"""
+    """下载附件并转文本若干段。返回 (markdown 片段, 转成的份数, 未转的原因集合)。
+
+    未转的原因要**逐条写清**（2026-10-28）：此前只记「.pdf」这种格式名，
+    存档里于是写着「未能转为文本」——读者不知道是该去 OCR、装库，还是重下文件。
+    三种处置完全不同，压成一句等于把问题留在原地。
+    """
     out, ok, seen, skipped = [], 0, 0, set()
     for name, url in atts[:MAX_ATT]:
         ext = web.suffix(url)
@@ -182,12 +187,18 @@ def fetch_attachments(atts, idx, tmpdir):
         code, body, _ = web.fetch(url, timeout=40)
         if body:
             target.write_bytes(body)
-        text = doc.to_text(target) if (body and ext and not doc.unsupported(ext)) else ''
+        if not body:
+            text, why = '', f'下载失败（HTTP {code}）'
+        elif doc.unsupported(ext):
+            text, why = '', f'.{ext} 没有转换器'
+        else:
+            text, why = doc.to_text(target)
         if text and len(text) >= 40:
             ok += 1
         else:
-            skipped.add(ext or '未知')
-            text = '（该附件未能转为文本，请在原文件核阅）'
+            why = why or '转出来不足 40 字'
+            skipped.add(f'{ext or "未知"}（{why}）')
+            text = f'（该附件未能转为文本：{why}。请到原文件核阅）'
         out.append(f'### 附件 {seen}：{name}\n\n> 原文件 <{url}>（{ext}，HTTP {code}）\n\n{text}')
     return '\n\n'.join(out), ok, skipped
 
@@ -245,10 +256,11 @@ def attempt_doc(e, args, stats, tmpdir):
     # 于是 mkdtemp 连目录都建不出来。落点本来就该在这里——用完即弃的是文件名，不是目录。
     tmp = Path(tmpdir) / ('body' + ext)
     tmp.write_bytes(raw)
-    text = doc.to_text(tmp)
+    text, why = doc.to_text(tmp)
     if not text or not text.strip():
         stats['fail'] += 1
-        return 'fail', f'正文是 {ext}，转文本为空——须人工打开另存，别把空文件当存档'
+        return 'fail', f'正文是 {ext}，没转成：{why or "转出来是空的"}'
+    # 转出来但没带原因，说明按预期路径成功；有原因而无正文才在上面返回。
     lines = [ln.rstrip() for ln in text.splitlines() if ln.strip()]
     if args['dry']:
         stats['new'] += 1

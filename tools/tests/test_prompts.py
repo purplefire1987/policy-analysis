@@ -11,8 +11,8 @@
 「这样干了」——本库 2026-10-25 在 `sys.exit(` 判据上栽过同一跤，所以这里钉住。
 """
 import sys
-import tempfile
 import unittest
+import uuid
 from pathlib import Path
 from unittest import mock
 
@@ -24,15 +24,19 @@ from pkb.core import Verdict                 # noqa: E402
 BODY = ('读 `AGENTS.md` 再动手。收工跑 `run.py check`。'
         '台账见 [[任务台账]]，取料按 `wiki/总览/深读方法手册.md`。\n')
 
+# 每个用例一个独立子目录，跑完不清理（见 Base.setUp）
+BASE = Path(__file__).resolve().parents[2] / '.cache' / 'test-prompts'
+
 
 class Base(unittest.TestCase):
     """每个用例一套临时「工作区＋库」：真库改了也测不出反例。"""
 
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        root = Path(self.tmp.name)
+        # 不用 tempfile（2026-10-28）：沙箱拦删除时 `gettempdir()` 会抛，
+        # 于是「断言全对」的用例也报红。改用唯一子目录，不清理。
+        root = BASE / uuid.uuid4().hex[:10]
         self.dir = root / 'automation-prompts'
-        self.dir.mkdir()
+        self.dir.mkdir(parents=True)
         self.vault = root / 'vault'
         (self.vault / 'wiki' / '总览').mkdir(parents=True)
         for name in ('深读方法手册', '任务台账'):
@@ -45,16 +49,22 @@ class Base(unittest.TestCase):
             patcher = mock.patch.object(obj, attr, val)
             patcher.start()
             self.addCleanup(patcher.stop)
-        self.addCleanup(self.tmp.cleanup)
+
 
     def write(self, name, body=BODY):
         p = self.dir / name
         p.write_text(body, encoding='utf-8')
         return p
 
-    def three(self, body=BODY):
-        """三条自动化各写一份现行存档——正常基线。"""
+    def three(self, body=BODY, omit=()):
+        """三条自动化各写一份现行存档——正常基线。
+
+        omit 用来造「缺一份」：**不建比建了再删稳**——删不掉的环境里，
+        靠 unlink 造出来的反例根本到不了断言。
+        """
         for aid, aname in P.AUTOMATIONS.items():
+            if aid in omit:
+                continue
             self.write(f'{aname}-{aid}-2026-10-26.md', body)
 
     def errors(self):
@@ -78,15 +88,13 @@ class Test现行唯一(Base):
         self.assertIn('份并存', text)
 
     def test_缺一份要报(self):
-        self.three()
-        (self.dir / '政策周观点生成-3ef2d6b6-2026-10-26.md').unlink()
+        self.three(omit=('3ef2d6b6',))
         r, text = self.errors()
         self.assertEqual(r.verdict, Verdict.FAIL)
         self.assertIn('顶层没有提示词存档', text)
 
     def test_文件名缺ID要报(self):
-        self.three()
-        (self.dir / '政策周观点生成-3ef2d6b6-2026-10-26.md').unlink()
+        self.three(omit=('3ef2d6b6',))
         self.write('政策周观点生成-2026-10-26.md')
         r, text = self.errors()
         self.assertEqual(r.verdict, Verdict.FAIL)
@@ -104,8 +112,10 @@ class Test现行唯一(Base):
         self.assertIn('旧版 2 份', r.summary)
 
     def test_目录不存在返回BAD_INPUT(self):
-        self.dir.rename(self.dir.parent / 'gone')
-        r, _ = self.errors()
+        # 指向一个不存在的路径，而不是把建好的目录改名——改名／删除在受限环境里会失败，
+        # 而「目录不存在」本来只是个路径条件，没必要真去动文件系统
+        with mock.patch.object(P, 'PROMPT_DIR', self.dir / 'nope'):
+            r, _ = self.errors()
         self.assertEqual(r.verdict, Verdict.BAD_INPUT)
 
 
@@ -120,8 +130,7 @@ class Test抬头自洽(Base):
         self.assertIn('索引页式漂移', text)
 
     def test_自称本版不报(self):
-        self.three()
-        (self.dir / '政策知识库定期体检-96885a01-2026-10-26.md').unlink()
+        self.three(omit=('96885a01',))
         self.write('政策知识库定期体检-96885a01-v8-2026-10-26.md',
                    BODY + '当前版本：v8。\n')
         r, _ = self.errors()
@@ -181,8 +190,7 @@ class Test引用可达(Base):
 
     def test_缺锚点要报(self):
         """少了「run.py check」，这份提示词就不再收工自检——脚本必须能察觉。"""
-        self.three()
-        (self.dir / '政策每日采集入库-d1ca26c1-2026-10-26.md').unlink()
+        self.three(omit=('d1ca26c1',))
         self.write('政策每日采集入库-d1ca26c1-2026-10-26.md',
                    '读 `AGENTS.md`。见 [[任务台账]]。\n')
         r, text = self.errors()

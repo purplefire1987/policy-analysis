@@ -11,6 +11,7 @@ from .blacklist import (                               # noqa: F401
 )
 from .fields import (                                   # noqa: F401
     DOMAINS, STAT_DOMAINS, IMPACTS, STATUSES, REQUIRED_FIELDS, CARD_SIZE_WARN,
+    VCS_STALE_DAYS,
     ANALYSIS_TYPES, ANALYSIS_WORD_LIMIT, ANALYSIS_SPINE,
     STANCES, STANCE_MIN, ARCHIVE_DATE_TOLERANCE,
 )
@@ -24,18 +25,22 @@ from .fields import (                                   # noqa: F401
 from .chains import FIELD_MAP                           # noqa: F401
 from .automations import AUTOMATIONS, PROMPT_ANCHORS    # noqa: F401
 from .legacy import LEGACY_WEEKS, IMPACT_SINCE                # noqa: F401
-from .lifecycle import ARCHIVE_DAYS, STALE_DAYS, VERIFY_DAYS, OBSERVE  # noqa: F401
+from .lifecycle import (ARCHIVE_DAYS, STALE_DAYS, VERIFY_DAYS, OBSERVE,  # noqa: F401
+                        RETIRED_RE, retired)
 from . import sources                                   # noqa: F401
 from .sources import LEVELS                             # noqa: F401
 
 __all__ = [
     'BLACK', 'BAD_SUBJECT', 'DOC_MUST_MENTION', 'is_bad',
     'DOMAINS', 'STAT_DOMAINS', 'IMPACTS', 'STATUSES', 'REQUIRED_FIELDS', 'CARD_SIZE_WARN',
+    'VCS_STALE_DAYS',
     'ANALYSIS_TYPES', 'ANALYSIS_WORD_LIMIT', 'ANALYSIS_SPINE',
     'STANCES', 'STANCE_MIN', 'ARCHIVE_DATE_TOLERANCE',
     'FIELD_MAP',
     'AUTOMATIONS', 'PROMPT_ANCHORS',
     'LEGACY_WEEKS', 'IMPACT_SINCE',
     'ARCHIVE_DAYS', 'STALE_DAYS', 'VERIFY_DAYS', 'OBSERVE',
+    # 已终止政策的口径（归档只认这一种）：检查与归档动作共用
+    'RETIRED_RE', 'retired',
     'sources', 'LEVELS',
 ]

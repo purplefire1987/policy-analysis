@@ -14,7 +14,8 @@
 """
 import argparse
 
-from pkb.core import CARD_DIR, extract_sections, table_rows, Result, Verdict
+from pkb.core import (CARD_DIR, extract_sections, table_rows, read,
+                      card_files, card_parts, card_name, Result, Verdict)
 from pkb.domain.fields import views_state, VIEW_ROWS_MIN
 
 RED_LINE = 80.0
@@ -48,6 +49,19 @@ def _report(a, b, c, thin, cov, mark):
     return lines
 
 
+def iter_sections():
+    """[(卡片名, 日期, 标题, 小节正文)]——扁平卡与序列卷一并展开。
+
+    序列卡的小节在卷里（2026-10-28）：只扫 `CARD_DIR.glob('*.md')` 会漏掉四张
+    大卡的全部小节，而报告上只会显示「总数变小」，**看不出少了谁**。
+    """
+    for p in card_files(CARD_DIR):
+        name = card_name(p)
+        for part in card_parts(p):
+            for d, t, chunk, _raw in extract_sections(read(part, ''))[0]:
+                yield name, d, t, chunk
+
+
 def run(argv=None):
     """返回 Result；明细在 lines，不打印。"""
     ap = argparse.ArgumentParser(description='观点覆盖率校验（只报进度，不阻断）')
@@ -59,20 +73,16 @@ def run(argv=None):
         return Result(Verdict.BAD_INPUT, f'产业卡目录不存在：{CARD_DIR}', [msg])
 
     a_items, b_items, c_items, thin = [], [], [], []
-    for p in sorted(CARD_DIR.glob('*.md')):
-        name = p.stem.replace('政策卡片-', '')
-        text = p.read_text(encoding='utf-8')
-        secs, _ = extract_sections(text)
-        for d, t, chunk, _raw in secs:
-            label = f'{name} → {d} · {t}'
-            cls = classify(chunk)
-            if cls == 'a':
-                a_items.append(label)
-                n = _n_rows(chunk)
-                if n < VIEW_ROWS_MIN:
-                    thin.append((label, n))
-            else:
-                (b_items if cls == 'b' else c_items).append(label)
+    for name, d, t, chunk in iter_sections():
+        label = f'{name} → {d} · {t}'
+        cls = classify(chunk)
+        if cls == 'a':
+            a_items.append(label)
+            n = _n_rows(chunk)
+            if n < VIEW_ROWS_MIN:
+                thin.append((label, n))
+        else:
+            (b_items if cls == 'b' else c_items).append(label)
 
     a, b, c = len(a_items), len(b_items), len(c_items)
     total = a + b + c

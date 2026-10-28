@@ -7,7 +7,9 @@
 import hashlib
 from pathlib import Path
 
-from .paths import VAULT, TOOLS, SKIP_DIRS
+from .paths import VAULT, TOOLS, SKIP_DIRS, CARD_DIR
+
+CARD_PREFIX = '政策卡片-'
 
 
 def md_files(skip_log=True, roots=None):
@@ -89,3 +91,55 @@ def action_names():
     if not d.exists():
         return []
     return sorted(p.stem for p in d.glob('*.py') if not p.stem.startswith('_'))
+
+
+def card_files(base=None):
+    """卡片主文件——**全库唯一的卡片发现规则**。
+
+    两种形态共存（2026-10-28 引入序列卡）：
+    * 扁平：`政策卡片-X.md`                      —— 常态，单卷装得下的卡；
+    * 目录：`政策卡片-X/政策卡片-X.md` ＋ 若干卷  —— 单卡超限时按日期拆卷。
+
+    为什么下沉到这里：此前 5 处各自 `CARD_DIR.glob('*.md')`（structure／archives／
+    views／weeks／docs）。拆卷后这 5 份 glob 会同时看不见卷里的小节——**判据不会
+    报错，只会静默少数**，正是本项目最怕的那类失效。
+
+    base 显式传入而不是直接用模块里的 CARD_DIR：测试把目录指到临时库时，
+    「patch 了调用方的 CARD_DIR、函数却读 fs 的 CARD_DIR」会让测试悄悄去扫真库，
+    本地绿、CI 空库红。**扫描哪个库必须是调用方说了算。**
+    """
+    base = Path(base) if base is not None else CARD_DIR
+    if not base.exists():
+        return []
+    flat = [p for p in base.glob('*.md') if p.is_file()]
+    nested = [p for d in base.iterdir() if d.is_dir()
+              for p in d.glob(f'{CARD_PREFIX}*.md')]
+    return sorted(flat + nested)
+
+
+def card_volumes(main):
+    """主卡的序列卷：同目录下除主文件外的 .md，按文件名（＝日期区间）升序。
+
+    扁平卡没有目录，自然没有卷。卷不是独立卡片，不该出现在卡片清单里。
+    这里不需要 base：卷一定在主文件旁边，主文件已经定位好了。
+    """
+    main = Path(main)
+    if main.parent == CARD_DIR:
+        return []
+    return sorted(p for p in main.parent.glob('*.md') if p != main)
+
+
+def card_parts(main):
+    """[主文件] + 卷（卷按新的在前）——判据合并小节时一律走这个顺序。
+
+    顺序即「时间倒序」：主卡若仍留有小节，它装的是最新的；其后依次是较新的卷。
+    `check_numbers` 判「小节未按时间倒序」依赖这个顺序不被重排——
+    合并后再 sort 一次，那条判据就永远查不出问题了。
+    """
+    vols = card_volumes(main)
+    return [Path(main)] + sorted(vols, reverse=True)
+
+
+def card_name(main):
+    """主文件 → 卡片名（`政策卡片-金融.md` → `金融`）。"""
+    return Path(main).stem.replace(CARD_PREFIX, '')

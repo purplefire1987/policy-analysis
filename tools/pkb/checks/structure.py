@@ -25,9 +25,11 @@ import re
 from collections import defaultdict
 
 from pkb.core import (VAULT, CARD_DIR, CHAIN_DIR, INDEX, SKIP_DIRS,
-                      parse_fm, extract_sections, all_names, FM_RE,
+                      parse_fm, extract_sections, all_names, FM_RE, read,
+                      card_files, card_parts, card_name, card_volumes,
                       Result, Verdict)
-from pkb.domain import DOMAINS, IMPACTS, STATUSES, REQUIRED_FIELDS, CARD_SIZE_WARN
+from pkb.domain import (DOMAINS, IMPACTS, STATUSES, REQUIRED_FIELDS, CARD_SIZE_WARN,
+                        retired)
 # 模板里的结构名（callout 五项、小节小标题、影响判断三行）**不进 domain.__all__**：
 # 口径扫描以「代码常量与 domain 某取值逐字相同」为判据，而这些是通用词
 # （「关键词」「影响判断」在文档里到处都是），进扫描词典只会误伤正确写法。
@@ -207,31 +209,85 @@ def _check_info_box(name, fm, body, secs):
                 f'基本信息「发文机关」重复列出 {sorted(dup)}——汇总时没去重')
 
 
+def _check_series(name, path, body, per):
+    """序列卡的三条硬判据（2026-10-28 增）。
+
+    序列卡是「主卡 + 若干卷」，最怕的不是拆错，是**拆完两边对不上**：
+    新加了一卷忘记进索引，读者从主卡永远找不到那一卷；或者卷名写着 `2026-10`
+    而里面躺着 9 月的政策——卷名一旦撒谎，按日期找政策的人会直接略过。
+
+    三条都在核同一件事：**索引、文件名、内容三者说的是不是同一段时间**。
+    """
+    vols = card_volumes(path)
+    if not vols:
+        return
+    listed = set(re.findall(r'\[\[[^\]]*?/([^\]|]+)', body))
+    actual = {v.stem for v in vols}
+    for v in sorted(actual - listed):
+        add(issues, '7-序列', name, f'卷「{v}」没进主卡索引——从主卡找不到它')
+    for v in sorted(listed - actual):
+        add(issues, '7-序列', name, f'主卡索引写了「{v}」，目录里没有这个文件')
+
+    for item in per:
+        vol = item['path']
+        if vol == path:
+            continue
+        m = re.match(r'^(\d{4}-\d{2})(?:至(\d{4}-\d{2}))?$', vol.stem)
+        if not m:
+            add(issues, '7-序列', name,
+                f'卷名「{vol.stem}」不是日期区间——应为 `2026-10` 或 `2025-11至2026-09`')
+            continue
+        lo, hi = m.group(1), m.group(2) or m.group(1)
+        out = [d for d, _t, _c, _r in item['secs'] if not lo <= d[:7] <= hi]
+        if out:
+            add(issues, '7-序列', name,
+                f'卷「{vol.stem}」里有 {out[0]} 的小节，超出卷名区间——按日期找会漏')
+
+
 def check_cards(theme_words):
     cards = {}
-    for p in sorted(CARD_DIR.glob('*.md')):
-        name = p.stem.replace('政策卡片-', '')
-        text = p.read_text(encoding='utf-8')
+    for p in card_files(CARD_DIR):
+        name = card_name(p)
+        text = read(p, '')
         fm, body = parse_fm(text)
         if not fm:
             add(issues, '1-frontmatter', name, '缺少 frontmatter')
             continue
-        secs, bad = extract_sections(body)
-        # 一次切好存进来：下面三处判据（callout／数值／每节栏位）都要用它，
-        # 各切一遍等于同一件事写三遍，还多两次全库重扫。
-        cards[name] = {'fm': fm, 'body': body, 'path': p, 'secs': secs, 'bad': bad}
+
+        # 一次切好：下面三处判据（callout／数值／每节栏位）都要用。
+        # 序列卡（2026-10-28）：小节分散在主卡与各卷里，**必须按 card_parts 合并**，
+        # 否则「政策数=13」会对着 0 个小节报错，卷里那 51 节则完全不进检查。
+        parts = card_parts(p)
+        secs, bad, per = [], [], []
+        for part in parts:
+            pt = text if part == p else read(part, '')
+            pb = body if part == p else parse_fm(pt)[1]
+            s, b = extract_sections(pb)
+            secs += s
+            bad += b
+            per.append({'path': part, 'size': len(pt), 'secs': s})
+        cards[name] = {'fm': fm, 'body': body, 'path': p, 'secs': secs,
+                       'bad': bad, 'parts': parts}
 
         # 体积哨兵（只提示，不阻断）：卡越大，每次插入新政策要读入的 token 越多。
         # 这不是格式错误，是使用成本——所以放警告不放问题。
-        if len(text) > CARD_SIZE_WARN:
+        # 逐份判而不是加总：拆卷的目的就是让**每一份**都读得动，加总等于没拆。
+        for item in per:
+            size, part = item['size'], item['path']
+            if size <= CARD_SIZE_WARN:
+                continue
+            tag = '主卡' if part == p else f'卷 {part.stem}'
+            top = sorted(((len(ch), d, t) for d, t, ch, _ in secs), reverse=True)[:3]
+            where = '；'.join(f'{d} {t[:16]}（{n // 1000}k）' for n, d, t in top)
             add(warns, '0-体积', name,
-                f'{len(text)} 字符（≈{len(text) // 2} token），超 {CARD_SIZE_WARN} 提示线'
-                '——改卡时只读卡头 40 行即可定位插入点，不必全文读')
+                f'{tag} {size} 字符（≈{size // 2} token），超 {CARD_SIZE_WARN} 提示线'
+                f'——最占篇幅：{where}。该按日期再拆一卷，或把这几节压成要点')
 
         _check_card_fields(name, fm, theme_words)
         _check_tags(name, fm, text)
         _check_keywords(name, fm, text)
         _check_info_box(name, fm, body, secs)
+        _check_series(name, p, body, per)
 
     return cards
 
@@ -267,12 +323,34 @@ def check_numbers(cards):
                     break
 
 
+def _norm(s):
+    """去掉标点与空白再比：标题里的「（）」「·」不该影响「是不是同一句」。"""
+    return re.sub(r'[^\u4e00-\u9fa5A-Za-z0-9]', '', s or '')
+
+
+def _essence(chunk):
+    """「核心要点」后面的第一句——判「有没有信息」看它，不看整段。"""
+    seg = chunk.split('**核心要点**', 1)
+    if len(seg) < 2:
+        return ''
+    for line in seg[1].split('\n'):
+        t = re.sub(r'^[\s：:；;、\-*>]+', '', re.sub(r'\*\*', '', line)).strip()
+        if t:
+            return t
+    return ''
+
+
 def _check_section(name, d, t, chunk):
     """一个小节的模板合规：小标题齐、有文号、有生效日期、影响判断三行（2026-10-28 增）。
 
     此前只查四个小标题，于是「文号」与「生效日期」两栏 157 个全节无一有，
     「影响判断」有 13 处写成整段论述而不是三行——**都不报错**。判据补到这一步，
     模板要求的每一栏才有对应的检查点；没有检查点的栏位等于不存在。
+
+    另加两条质量判据（同日）：
+    * 「政策原文」链接是硬要求——没有它，读者回不到原文核，卡片只是一段转述；
+    * 核心要点第一句与标题逐字相同只提示——那是复述标题，占了最贵的位置没给信息。
+      判提示不判失败：偶尔需要复述全称的地方（法律名）不该被脚本判红。
     """
     label = f'{d} · {t}'
     for s in SECTION_ELEMS:
@@ -284,6 +362,18 @@ def _check_section(name, d, t, chunk):
             f'没查的写「（待补全）」，留空与没查分不开')
     if '**生效日期**' not in chunk:
         add(issues, '3-小节', name, f'{label[:46]} 缺「**生效日期**」')
+    if '政策原文' not in chunk:
+        add(issues, '3-小节', name, f'{label[:46]} 没有「政策原文」链接——读者回不到原文')
+    # 已终止的政策（2026-10-28）：状态词后面必须写清「被谁取代」。
+    # 只写「已废止」等于让读者自己去找替代者，而找替代者正是这张卡存在的理由。
+    st = retired(chunk)
+    if st and len(st[1]) < 6:
+        add(issues, '3-小节', name,
+            f'{label[:46]} 标了「{st[0]}」却没写被谁取代——补「（被 YYYY-MM-DD《新政策名》取代）」')
+    ess = _essence(chunk)
+    if _norm(ess) and _norm(ess) == _norm(t):
+        add(warns, '3-质量', name,
+            f'{label[:40]} 核心要点第一句与标题逐字相同——那是复述，没给信息')
     if '**影响判断**' in chunk:
         seg = chunk.split('**影响判断**', 1)[1].split('**国际对比**')[0]
         for f in IMPACT_FIELDS:
@@ -406,7 +496,9 @@ def check_links(names):
             target = link.split('|')[0].split('#')[0].strip().rstrip('\\')
             if not target or '{' in target or target.endswith('XXX') or target in PLACEHOLDER_LINKS:
                 continue
-            if target not in names:
+            # `[[目录/页面]]` 是 Obsidian 的合法写法（序列卡用它指卷）。只比文件名，
+            # 否则整串带路径的链接会被一律判成断链——判据比写法严，等于禁止这种写法。
+            if target not in names and target.split('/')[-1] not in names:
                 rel = str(p.relative_to(VAULT))
                 add(issues, '6-断链', rel, f'[[{target}]] 无对应文件')
 
