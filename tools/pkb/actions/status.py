@@ -23,10 +23,29 @@ import re
 from pkb.core import COLLECT_LOG, STATUS, LEDGER
 
 DASH = '（未读到）'
+LIGHTS = ('🔴', '🟡', '🟢', '—')      # 「—」＝新建任务尚未到首跑时间（运行状态 §一 的判定表）
 
 
 def _cells(line):
     return [c.strip() for c in line.strip().strip('|').split('|')]
+
+
+def _section(text, title='当前状态'):
+    """只取「## …当前状态」这一节。
+
+    为什么不能全文扫：运行记录是流水，正文里也会出现灯字符
+    （「2 条提示＝采集健康🟡」），那一行的灯不在独立格子里，取不到就整条挂掉。
+    2026-10-28 晚 `status` 就是这样崩的——本页加了归档索引行、又在流水里写了 🟡，
+    而判据默认「全文的 | 行都是状态表」。
+    """
+    out, on = [], False
+    for line in text.split('\n'):
+        if line.startswith('## '):
+            on = title in line
+            continue
+        if on:
+            out.append(line)
+    return out
 
 
 def collect_upto():
@@ -62,17 +81,26 @@ def freshness(day, today=None):
 
 
 def lights():
-    """运行状态里采集／体检／周观点三行灯 → ['采集🟢', ...]。"""
+    """「当前状态」表 → ['采集 🟡', ...]。灯取每行最后一格，认四档。
+
+    以前用 `next(...)` 找格子，遇到没填灯的格式行会抛 StopIteration，
+    把 `status` 整条命令带崩——它是 AGENTS 三条命令之一、也是自动化开工第一条，
+    不该因为一格格式问题就什么都读不到。现在取不到就写「（灯未填）」：
+    错的地方要看得见，但不能一错全黑。
+    """
     out = []
     if not STATUS.exists():
         return out
-    for line in STATUS.read_text(encoding='utf-8').split('\n'):
-        s = line.strip()
-        if not (s.startswith('|') and any(k in s for k in ('采集', '体检', '周观点'))):
-            continue
+    for line in _section(STATUS.read_text(encoding='utf-8')):
         cells = _cells(line)
-        if len(cells) >= 3 and re.search(r'🔴|🟡|🟢', s):
-            out.append(f'{cells[0]}{next(c for c in cells if c in ("🔴", "🟡", "🟢"))}')
+        if not line.strip().startswith('|') or len(cells) < 3:
+            continue
+        if cells[-1] == '灯' or set(cells[0]) <= set('-: '):
+            continue                      # 表头与分隔行
+        if cells[-1] not in LIGHTS:
+            out.append(f'{cells[0]} （灯未填）')
+            continue
+        out.append(f'{cells[0]} {cells[-1]}')
     return out
 
 
