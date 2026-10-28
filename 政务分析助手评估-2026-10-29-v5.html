@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>政务分析助手全面评估 · 2026-10-29（v5）</title>
+<style>
+  :root{
+    --ink:#1a1d21; --ink2:#4a5158; --ink3:#7a828a;
+    --line:#e3e6ea; --bg:#ffffff; --panel:#f7f8fa;
+    --good:#1f7a4d; --warn:#a8620a; --bad:#b3261e; --accent:#2b5f9e;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; padding:0 0 72px; background:var(--bg); color:var(--ink);
+    font:16px/1.75 -apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:860px;margin:0 auto;padding:0 26px}
+  header{padding:56px 0 30px;border-bottom:3px solid var(--ink)}
+  .kicker{font-size:13px;letter-spacing:.14em;color:var(--ink3);text-transform:uppercase;margin-bottom:14px}
+  h1{font-size:31px;line-height:1.35;margin:0 0 16px;font-weight:700;letter-spacing:-.01em}
+  .sub{color:var(--ink2);font-size:15px;margin:0}
+  .sub b{color:var(--ink)}
+
+  .scoreboard{
+    display:grid;grid-template-columns:186px 1fr;gap:34px;align-items:center;
+    padding:34px 0;border-bottom:1px solid var(--line);
+  }
+  .total{border-right:1px solid var(--line);padding-right:20px}
+  .total .n{font-size:62px;line-height:1;font-weight:700;letter-spacing:-.03em}
+  .total .n small{font-size:20px;color:var(--ink3);font-weight:400}
+  .total .cap{font-size:13px;color:var(--ink3);margin-top:10px}
+  .delta{font-size:13px;color:var(--bad);margin-top:6px;font-weight:600}
+  .bars{display:grid;gap:9px}
+  .bar{display:grid;grid-template-columns:118px 1fr 46px;gap:12px;align-items:center;font-size:13.5px}
+  .bar .lab{color:var(--ink2);text-align:right}
+  .bar .track{height:8px;background:#eceef1;border-radius:4px;overflow:hidden}
+  .bar .fill{height:100%;border-radius:4px;background:var(--accent)}
+  .bar .fill.under{background:var(--warn)}
+  .bar .val{font-variant-numeric:tabular-nums;font-weight:600;text-align:right}
+
+  h2{font-size:20px;margin:52px 0 8px;padding-bottom:10px;border-bottom:1px solid var(--line);font-weight:700}
+  h2 .num{color:var(--ink3);font-weight:400;margin-right:9px;font-variant-numeric:tabular-nums}
+  p{margin:14px 0}
+  .lead{color:var(--ink2)}
+
+  table{width:100%;border-collapse:collapse;margin:18px 0;font-size:14.5px}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-size:12.5px;letter-spacing:.05em;color:var(--ink3);font-weight:600;text-transform:uppercase}
+  td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+  tr.hi td{background:#fbfcfd}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;background:#f2f4f7;padding:1px 5px;border-radius:3px}
+
+  .dim{margin:26px 0 0;padding:0 0 26px;border-bottom:1px dashed var(--line)}
+  .dim:last-of-type{border-bottom:none}
+  .dim h3{font-size:17px;margin:0 0 4px;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+  .dim h3 .pts{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--ink3);font-size:14px;font-weight:400}
+  .dim h3 .pts b{color:var(--ink);font-size:18px}
+  .dim h3 .pts b.under{color:var(--warn)}
+  .dim h3 .pts b.flat{color:var(--ink3)}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:14px}
+  .cols h4{font-size:12.5px;letter-spacing:.06em;margin:0 0 8px;color:var(--ink3);text-transform:uppercase}
+  .cols ul{margin:0;padding-left:17px;font-size:14px;line-height:1.7}
+  .cols li{margin-bottom:7px}
+  .do h4{color:var(--good)}
+  .dont h4{color:var(--bad)}
+
+  .box{background:var(--panel);border-left:3px solid var(--accent);padding:16px 20px;margin:22px 0;font-size:14.5px}
+  .box p{margin:0 0 10px}
+  .box p:last-child{margin-bottom:0}
+  .box b{color:var(--accent)}
+  .box.warn{border-left-color:var(--warn)}
+  .box.warn b{color:var(--warn)}
+  .box.bad{border-left-color:var(--bad)}
+  .box.bad b{color:var(--bad)}
+  .box.good{border-left-color:var(--good)}
+  .box.good b{color:var(--good)}
+
+  .todo{counter-reset:t;list-style:none;padding:0;margin:20px 0}
+  .todo li{
+    counter-increment:t;position:relative;padding:15px 0 15px 46px;
+    border-bottom:1px solid var(--line);font-size:15px;
+  }
+  .todo li::before{
+    content:counter(t);position:absolute;left:0;top:15px;
+    width:27px;height:27px;border-radius:50%;background:var(--ink);color:#fff;
+    font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;
+  }
+
+  .gate{display:grid;grid-template-columns:1fr 92px;gap:12px;font-size:14px;align-items:center;
+        padding:9px 0;border-bottom:1px solid var(--line)}
+  .gate .st{font-weight:700;text-align:right}
+  .pass{color:var(--good)} .fail{color:var(--bad)} .part{color:var(--warn)}
+
+  footer{margin-top:56px;padding-top:22px;border-top:3px solid var(--ink);font-size:13px;color:var(--ink3)}
+  .small{font-size:13.5px;color:var(--ink3)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="kicker">第五版 · 按《评估口径》首次计分</div>
+  <h1>政务分析助手全面评估</h1>
+  <p class="sub">
+    范围：<b>脚本 · 知识库 · 专家 · 结构</b>　｜　日期：<b>2026-10-29</b>　｜　口径：[[评估口径]]（2026-10-28 成文）<br>
+    与 v1–v4 的根本差别：<b>文档四类问题第一次从「文字判」变成「扣分项」</b>。前四版挑得出问题却不进分，这一版进分了。
+  </p>
+</header>
+
+<div class="scoreboard">
+  <div class="total">
+    <div class="n">89.0<small></small></div>
+    <div class="cap">六维均分 93.0 − 文档扣分 4.0</div>
+    <div class="delta">未达标：内容维 89 &lt; 90</div>
+  </div>
+  <div class="bars">
+    <div class="bar"><div class="lab">内容与结构化</div><div class="track"><div class="fill under" style="width:89%"></div></div><div class="val">89</div></div>
+    <div class="bar"><div class="lab">格式转换</div><div class="track"><div class="fill" style="width:93%"></div></div><div class="val">93</div></div>
+    <div class="bar"><div class="lab">编辑与版式</div><div class="track"><div class="fill" style="width:92%"></div></div><div class="val">92</div></div>
+    <div class="bar"><div class="lab">安全合规与审计</div><div class="track"><div class="fill" style="width:95%"></div></div><div class="val">95</div></div>
+    <div class="bar"><div class="lab">自动化与 AI</div><div class="track"><div class="fill" style="width:95%"></div></div><div class="val">95</div></div>
+    <div class="bar"><div class="lab">归档与生命周期</div><div class="track"><div class="fill" style="width:94%"></div></div><div class="val">94</div></div>
+  </div>
+</div>
+
+<div class="box bad">
+  <p><b>先把话说清：这个 89.0 不是合格分。</b>按《评估口径》第四节门槛，<b>每一维都要 ≥90</b>，而内容获取与结构化是 89。总分会报，但结论必须写「未达标」——这是上一版专门记下的教训：只报均分不算交代完。要过关，需要把内容维推到 90，而不是把别处做得更好。</p>
+</div>
+
+<h2><span class="num">一</span>口径变了什么</h2>
+
+<p class="lead">这一版是《评估口径》成文后第一次真正使用它。三处变化直接影响数字：</p>
+
+<table>
+  <thead><tr><th>变化</th><th>v4 怎么做</th><th>v5 怎么做</th><th>对本版的影响</th></tr></thead>
+  <tbody>
+    <tr><td><b>文档问题要扣分</b></td><td>挑出七处写进正文，不进分</td><td>撒谎 2.0／自相矛盾 1.0／过期 1.0／重复 0.5，扣在均分之后</td><td class="num">−4.0</td></tr>
+    <tr><td><b>每处要报行号＋原文＋正确值</b></td><td>写「有几处问题」</td><td>不报行号的视为形容词，不算判据</td><td>本节下移到第五节</td></tr>
+    <tr><td><b>门槛单列</b></td><td>只在正文提一句</td><td>七项逐条判通过／不通过，不折分</td><td>结论被判「未达标」</td></tr>
+  </tbody>
+</table>
+
+<p class="small">另有一条自律：口径页不写现状读数。所以本报告里任何数字都附命令（见第七节），口径页里一个现数都没有。</p>
+
+<h2><span class="num">二</span>六维（库的成熟度，100 分制）</h2>
+
+<div class="dim">
+  <h3>内容获取与结构化 <span class="pts"><b class="under">89</b> / v4 89 · 持平</span></h3>
+  <p>三类内容的机制全部齐备，缺口全部在存量：观点 131/157＝83.4%（过了 80 红线），但仍有 <b>26 节只有「（待补全）」占位</b>、22 个不足 5 条；<b>71 处</b>来源标着「原始出处待核／未能核实」；一手原文 37 份对应 157 节，覆盖率 23.6%。</p>
+  <div class="cols">
+    <div class="do"><h4>凭什么保持 89</h4><ul>
+      <li>信号 121 条、七字段完整率 <b>100%</b></li>
+      <li>文号待补从 16 处收敛到 <b>2 处</b>，每条都核过两处以上独立来源</li>
+      <li>归档日期一致性 37/37，0 问题</li>
+    </ul></div>
+    <div class="dont"><h4>凭什么上不了 90</h4><ul>
+      <li>三项存量债<b>一笔未清</b>：26 节观点、71 处待核、一手覆盖 23.6%</li>
+      <li>口径第 30 行写死了这条：<b>机制齐备而存量债一笔未清，只到 89</b></li>
+      <li>补的速度与建卡速度大致持平——不是「差一个脚本」</li>
+    </ul></div>
+  </div>
+</div>
+
+<div class="dim">
+  <h3>格式转换（只算进库，终点 TXT） <span class="pts"><b class="flat">93</b> / v4 93 · 持平</span></h3>
+  <p>六类进库格式各有处置，「转不了」的四种原因分得开，表格原样贴进同一文件不退化成段落。本版无新事实——今天删掉的是<b>出库</b>（<code>render</code> 动作与 11 个测试），而口径本来就不算出库，删了不扣分也不加分。</p>
+  <div class="box"><p><b>为什么不涨：</b>分数跟着事实走，不跟着「删了多少代码」走。这一维的分数由「四类原因有没有混写」决定，今天没有动这层。</p></div>
+</div>
+
+<div class="dim">
+  <h3>编辑与版式 <span class="pts"><b class="flat">92</b> / v4 92 · 持平</span></h3>
+  <p>33 张卡全在阈值内，4 张超限卡已拆成「主卡＋日期卷」。但<b>能源卡 19137 字符，距 20000 提示线只剩 863 字符（4.3%）</b>，而哨兵<b>只报越线、不报余量</b>——「没报警」不等于余量充足。这条上一版已扣过一次，本版不重复扣（口径第三节规则 2）。</p>
+  <div class="box warn"><p><b>今天的新事实：</b>七要素从 AGENTS 搬到卡片模板，模板成了写法唯一源。这取消了「两份重复」，但<b>模板栏位仍没有逐条判据</b>——搬完是「零判据的唯一源」，比「零判据的两份副本」好，但离 90 分锚点（模板每一栏都能被逐条核）还差一步。</p></div>
+</div>
+
+<div class="dim">
+  <h3>安全合规与审计 <span class="pts"><b class="flat">95</b> / v4 95 · 持平</span></h3>
+  <p>两库远端与本地逐字一致（工作区 <code>08a6dcc</code>／资料库 <code>7f17ba0</code>），误提交为零，专家包入口仍是符号链接（63 个脚本同一份，无副本）。</p>
+  <div class="cols">
+    <div class="do"><h4>今天加了分的事实</h4><ul>
+      <li>新增 4 条判据（时刻／模板清单／受控词名单／log 类型），<b>每条都改坏实测过一次</b></li>
+      <li>告警页改成内容变了才写盘——此前每跑一次 <code>check</code> 就产一次 diff，「未提交」永远清不掉，真变化埋在噪音里</li>
+    </ul></div>
+    <div class="dont"><h4>为什么没到 96</h4><ul>
+      <li>资料库仍有 <b>2 处未提交</b>，其中一处是把 AGENTS 标题改坏了（见第五节）</li>
+      <li><b>专家定义同步漏了 4 处</b>——我今天改的规则，改了源、没改完副本，而没有任何判据报出来</li>
+    </ul></div>
+  </div>
+</div>
+
+<div class="dim">
+  <h3>自动化与 AI 增强 <span class="pts"><b class="flat">95</b> / v4 95 · 持平</span></h3>
+  <p>四个自动化各有 1 份现行提示词，命令／引用／抬头 0 问题；采集／体检／周观点三盏灯 🟡🟢🟢，归档索引 <code>—</code>（首跑 2026-11-01，未到）。</p>
+  <div class="box warn"><p><b>卡在这两条上：</b>① <b>新任务首跑未验</b>——归档索引的幂等是写完之后补的，真实首跑还没发生；② <b>失败只写页面、不通知</b>——体检挂了要等下一次有人打开页面才知道。两条都不在今天的改动范围内，因此不加分。</p></div>
+</div>
+
+<div class="dim">
+  <h3>归档与生命周期 <span class="pts"><b class="flat">94</b> / v4 94 · 持平</span></h3>
+  <p>归档 644K：备份 624K（58 份不可重建的一手原文）＋索引 12K＋判断台账 8K。保留策略<b>每一档都有一次真实执行记录</b>：导出件删过 14 个、两个 tar 删过（基线 <code>e7c2642</code> 可取回）、58 份原文明确留过。生命周期自动推：<code>run.py ledger</code> 今天报 1 条待退回（<code>T-20261024-01</code>，4 天无动作）。</p>
+  <div class="box"><p><b>为什么不是更高：</b>「已终止政策搬运」这条路<b>一次都没走过</b>——<code>归档/index.md</code> 第 57 行写着「当前没有已终止的政策」。机制在，样本不在。按口径不判它不满足（没有样本可搬不是缺陷），但也算不上「验过」。</p></div>
+</div>
+
+<h2><span class="num">三</span>四块专项</h2>
+
+<h3 style="font-size:16px;margin:30px 0 6px">3.1 脚本（16 个动作 · 62 个文件 · 8535 行 · 371 个函数）</h3>
+
+<table>
+  <thead><tr><th>层</th><th class="num">行数</th><th class="num">文件</th><th>职责</th><th>评价</th></tr></thead>
+  <tbody>
+    <tr><td><code>core/</code></td><td class="num">1236</td><td class="num">12</td><td>路径、读写、网页、文档转换、git、时间戳幂等</td><td>唯一路径定义，单向被依赖 ✅</td></tr>
+    <tr><td><code>domain/</code></td><td class="num">505</td><td class="num">10</td><td>口径：名单、字段、链条、评分、台账列</td><td>最薄的一层，也是最该薄的 ✅</td></tr>
+    <tr><td><code>checks/</code></td><td class="num">3801</td><td class="num">20</td><td>10 个检查项＋<code>docs</code> 包 9 个模块</td><td>占比 45%——判据比业务重，这是特性不是缺陷</td></tr>
+    <tr><td><code>actions/</code></td><td class="num">2974</td><td class="num">19</td><td>16 个动作，一模块一动作</td><td>与 <code>run.py list</code> 一一对应，测试钉住 ✅</td></tr>
+  </tbody>
+</table>
+
+<div class="cols">
+  <div class="do"><h4>做得对的</h4><ul>
+    <li><b>注册表即清单</b>：文件放进 <code>checks/</code> 不注册就不会跑，也不会报错——「要不要跑」与「在不在目录里」分开了</li>
+    <li><b><code>Result.summary</code> 无默认值</b>：有退出码没摘要从此写不出来</li>
+    <li><b>函数按层分档</b>：<code>checks/</code> ≤40 行、其余 ≤60，只数有效代码行——量的是「缝了几件事」，不惩罚写清为什么</li>
+    <li><b>353 个测试 + 51 subtests</b>，CI 用空库跑（空库是最强契约输入）</li>
+    <li>今天把两处幂等判定抽成 <code>core/stamp.py</code> 共用，而不是各写一份正则</li>
+  </ul></div>
+  <div class="dont"><h4>仍然薄的</h4><ul>
+    <li><b>叙述性描述没有判据</b>：专家定义那 4 处过期，<code>check_docs</code> 一条都没报——它能核结构数字、能核名单，核不了「三个定时」这种句子</li>
+    <li><code>check_docs</code> 一个包 9 个模块、含 22 项断言，是全系统最密的地方，也是改动风险最高的地方</li>
+    <li>「改一处口径要动几个文件」仍未收敛：今天把代码搬进 README 是减法，但专家定义＋提示词＋两份 README 的叙述部分仍要靠人通读</li>
+  </ul></div>
+</div>
+
+<h3 style="font-size:16px;margin:36px 0 6px">3.2 知识库（33 张卡 / 157 小节 · 15 链 · 15 信号页 · 5 周观点 · 10 总览页）</h3>
+
+<table>
+  <thead><tr><th>指标</th><th class="num">现值</th><th>状态</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr class="hi"><td>观点覆盖率</td><td class="num">131/157 = 83.4%</td><td class="part">过红线 80，距 90 分不够</td><td>26 节仍是「（待补全）」占位，22 个不足 5 条</td></tr>
+    <tr><td>信号条目</td><td class="num">121 条</td><td class="pass">七字段 100%</td><td>三张页曾长期空白，现由存量队列按批补</td></tr>
+    <tr><td>文号待补全</td><td class="num">2 处</td><td class="pass">16 → 2</td><td>每条核过两处以上独立来源，没查到就写没查到</td></tr>
+    <tr><td>来源待核</td><td class="num">71 处</td><td class="fail">最大单点欠账</td><td>标了「原始出处待核／未能核实」，即观点在、出处不可核</td></tr>
+    <tr><td>一手原文</td><td class="num">37 份</td><td class="part">覆盖 23.6%</td><td>与卡片日期 37/37 一致；「不落报道」是口径选择，不是遗漏</td></tr>
+    <tr><td>周观点</td><td class="num">5 周（有效 2）</td><td class="pass">W43 覆盖 100%</td><td>W44 起七节，第八节 10-28 撤</td></tr>
+    <tr><td>分析报告</td><td class="num">1 篇</td><td class="pass">结构/结论/篇幅通过</td><td>按需产出，无节拍要求</td></tr>
+  </tbody>
+</table>
+
+<p class="small">看得出层次：<b>机制类指标全绿</b>（字段完整率、日期一致、格式合规），<b>存量类指标全黄</b>（观点、待核、一手）。这正是 89 而不是 95 的原因——坏的不是管道，是管道里还缺料。</p>
+
+<h3 style="font-size:16px;margin:36px 0 6px">3.3 专家（政务分析助手 v1.0.0）</h3>
+
+<table>
+  <thead><tr><th>文件</th><th class="num">字节</th><th>作用</th></tr></thead>
+  <tbody>
+    <tr><td><code>agents/gov-policy-analyst.md</code></td><td class="num">29995</td><td>专家定义：地图、四类任务、硬规则、调度、汇报格式</td></tr>
+    <tr><td><code>skills/policy-kb-tools/SKILL.md</code></td><td class="num">3742</td><td>技能入口，只留判读底线＋指针</td></tr>
+    <tr><td><code>README.md</code></td><td class="num">3702</td><td>包说明，动作表改指 <code>run.py --help</code></td></tr>
+    <tr><td><code>skills/policy-kb-tools/scripts</code></td><td class="num">符号链接</td><td>→ 工作区 <code>tools/</code>，物理只一份代码</td></tr>
+  </tbody>
+</table>
+
+<div class="box bad">
+  <p><b>专家这一块有一个已知的、必须由你动手的缺口：</b><code>plugins/cache/my-experts/gov-policy-analyst/1.0.0/</code> 下还有一份<b>实体副本</b>，11.7 KB、无 <code>skills</code> 字段，内容是 10-24 的版本；而源是 30 KB。实际加载哪一份取决于专家中心。<b>改规则改了源、命中缓存就等于没改</b>——这条已登记 <code>T-20261029-01</code>，机器做不了（缓存由平台写）。</p>
+</div>
+
+<p>除此之外，专家定义今天暴露出的问题不是「写得不好」，而是<b>它自己写了「check_docs 查不出叙述性描述，改完要自己通读一遍」，然后今天就没人通读</b>：加第四个自动化、解耦领取闸门，都改了 AGENTS，没改完这里。四处见第五节。</p>
+
+<h3 style="font-size:16px;margin:36px 0 6px">3.4 结构</h3>
+
+<ul>
+  <li><b>三层分类</b>（载体层卡片／索引层链条／粗筛层四领域）成立，33 张卡、15 条链、15 个信号页，职责不混。</li>
+  <li><b>三页台账分工</b>成立：采集日志管「采到哪天」、运行状态管「跑没跑」、任务台账管「修没修」。台账 35 行在未闭环表内，其中 16 项非 ✅，列数对齐、编号唯一，8 类类型 5 个负责环节合规。</li>
+  <li><b>序列卡</b>：4 张超限卡拆成主卡＋日期卷（共 8 卷），字典序即时间序，装箱从最新往最旧。</li>
+  <li><b>两套文档分家</b>（今天定的）：AGENTS 管知识库，工作区 README 管代码。判据一句话——<b>规则里出现 <code>pkb/</code> 的实现细节，就是放错了地方</b>。AGENTS 从 63215 降到 59045 字节，节号未变，全库「见第十节」的引用仍有效。</li>
+</ul>
+
+<h2><span class="num">四</span>助手自身六维（10 分制，另一套尺度）</h2>
+
+<p class="lead">评的是「政务分析助手这个专家包」的工程性与归口，不是知识库。首评 2026-10-25：8.25／10。<b>两套尺度不相加</b>——「库 89 分所以助手 8.9」是假换算，分母不同。</p>
+
+<table>
+  <thead><tr><th>维度</th><th class="num">v5</th><th class="num">首评</th><th>依据</th></tr></thead>
+  <tbody>
+    <tr><td>模块化</td><td class="num">8.5</td><td class="num">8.0</td><td>四层单向、口径只在 <code>domain/</code>；今天把幂等判定收进 <code>core/stamp.py</code> 两处共用</td></tr>
+    <tr><td>知识库</td><td class="num">9.3</td><td class="num">8.0</td><td>借用第二节六维（93.0／10）；这一维本来就不该另立一套</td></tr>
+    <tr><td>自动化</td><td class="num">8.0</td><td class="num">8.5</td><td>四个节拍覆盖全周期，但新任务首跑未验、失败只在页面可见</td></tr>
+    <tr><td>归口</td><td class="num">9.0</td><td class="num">8.5</td><td>八处重复压成一处、代码搬进 README、四条新判据守着；扣分在「专家定义漏改四处无判据」</td></tr>
+    <tr><td>可维护</td><td class="num">8.5</td><td class="num">8.0</td><td>函数按层分档只数代码行；但改一处口径仍要动多份叙述文本</td></tr>
+    <tr><td>复用与可测</td><td class="num">9.0</td><td class="num">8.5</td><td>353 测试、51 subtests、空库 CI、判据自测；判据改坏实测已成惯例</td></tr>
+    <tr class="hi"><td><b>均分</b></td><td class="num"><b>8.7</b></td><td class="num">8.25</td><td>+0.45</td></tr>
+  </tbody>
+</table>
+
+<p class="small">注意「自动化」这一维<b>降</b>了 0.5：加入归档索引后，四个任务里有一个还没跑过，责任面变宽而验证没跟上。这不是苛求，是口径里「新增节拍在首跑前验过幂等」这条的必然结果。</p>
+
+<h2><span class="num">五</span>扣分清单（本次评估新发现，−4.0）</h2>
+
+<p class="lead">按口径第三节：每处必须报「文件:行号 ＋ 原文 ＋ 正确值」。旧报告已记过的不重复扣。</p>
+
+<table>
+  <thead><tr><th>类</th><th>文件:行号</th><th>原文</th><th>正确值</th><th class="num">扣</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><b>撒谎</b></td>
+      <td><code>agents/gov-policy-analyst.md:181、193–199</code></td>
+      <td>「这套系统有四个任务在跑（<b>三个定时</b> + 你按需代办）」「<b>三个</b> ID 不许记错：」，下表只有采集／体检／周观点三行</td>
+      <td>四个定时（无「按需代办」），表补第四行 <code>归档索引 · da7f747a · 周日 21:00</code></td>
+      <td class="num">2.0</td>
+    </tr>
+    <tr>
+      <td><b>自相矛盾</b></td>
+      <td><code>agents/gov-policy-analyst.md:23</code></td>
+      <td>「…只报告不补采；<b>每次体检释放 1 页存量补采</b>」</td>
+      <td>领取闸门＝距上次领取满 2 天（<code>GATE_DAYS</code>），与体检解耦——见 <code>AGENTS.md:233</code></td>
+      <td class="num">1.0</td>
+    </tr>
+    <tr>
+      <td><b>自相矛盾</b></td>
+      <td><code>AGENTS.md:54</code></td>
+      <td><code>## 二、目录与页分工</code></td>
+      <td><code>## 二、目录与三页分工</code>——正文第 77 行仍写「总览里三页各管一件事」，<code>采集日志.md:14</code> 仍写「三页分工」</td>
+      <td class="num">1.0</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="box bad">
+  <p><b>三处的共同点，也是最该记的一条：</b>它们全部是<b>「改了 AGENTS，没改完专家定义」</b>。10-28 加第四个自动化、解耦领取闸门，两件事都只改了规则页。而专家定义<b>自己就写着</b>「<code>check_docs</code> 查不出叙述性描述，改完要自己通读一遍」——写了这句话，然后没通读。</p>
+  <p>第 3 条更值得注意：它是<b>未提交的工作区改动</b>，把原标题删了一个字。没有任何判据覆盖节标题，所以它一路绿到这次人工核对。</p>
+</div>
+
+<h2><span class="num">六</span>与 v4 的差</h2>
+
+<table>
+  <thead><tr><th></th><th class="num">v2</th><th class="num">v3</th><th class="num">v4</th><th class="num">v5</th><th>变化与理由</th></tr></thead>
+  <tbody>
+    <tr><td>六维均分</td><td class="num">85.0</td><td class="num">92.3</td><td class="num">93.0</td><td class="num">93.0</td><td>六个维度今天一分未动——做的是减法与归口，不是补内容</td></tr>
+    <tr><td>文档扣分</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">−4.0</td><td><b>口径变更</b>：四类问题首次进分</td></tr>
+    <tr class="hi"><td><b>总分</b></td><td class="num"><b>85.0</b></td><td class="num"><b>92.3</b></td><td class="num"><b>93.0</b></td><td class="num"><b>89.0</b></td><td>数字降了，判断更准了</td></tr>
+    <tr><td>助手六维</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">8.7</td><td>首评 8.25（10-25），本版首次复评</td></tr>
+  </tbody>
+</table>
+
+<div class="box warn">
+  <p><b>「总分降了」这件事必须解释清楚，否则就是自欺：</b>v4 的 93.0 与 v5 的 93.0（均分）<b>是同一批事实</b>，唯一的差别是 v5 把一直存在、一直被记录却从不进分的文档问题折成了 −4.0。所以这不是「今天变差了」，是<b>前四版一直算得偏松</b>。</p>
+  <p>按口径第三节规则 3，<b>不追溯已发布报告</b>：v1–v4 是当时的判断，不改。</p>
+</div>
+
+<h2><span class="num">七</span>可复跑读数（每条给命令）</h2>
+
+<table>
+  <thead><tr><th>读数</th><th>命令</th><th class="num">本次</th></tr></thead>
+  <tbody>
+    <tr><td>十一项体检</td><td><code>python3 tools/run.py check</code></td><td class="num">全 0，提示 2 条</td></tr>
+    <tr><td>单项明细</td><td><code>run.py check --only docs</code></td><td class="num">22 项 OK</td></tr>
+    <tr><td>观点覆盖率</td><td><code>run.py check --only views</code></td><td class="num">131/157＝83.4%</td></tr>
+    <tr><td>结构／体积</td><td><code>run.py check --only structure</code></td><td class="num">33 卡／157 节，无警告</td></tr>
+    <tr><td>一手存档</td><td><code>run.py check --only archives</code></td><td class="num">37 份，0 问题</td></tr>
+    <tr><td>提示词</td><td><code>run.py check --only prompts</code></td><td class="num">4 个各 1 份现行</td></tr>
+    <tr><td>四盏灯</td><td><code>run.py status</code></td><td class="num">🟡🟢🟢—</td></tr>
+    <tr><td>派活清单</td><td><code>run.py plan</code></td><td class="num">15 项在办＋1 项待拍板</td></tr>
+    <tr><td>生命周期</td><td><code>run.py ledger</code></td><td class="num">1 条待退回</td></tr>
+    <tr><td>测试</td><td><code>pytest tests -q</code></td><td class="num">353 passed + 51 subtests</td></tr>
+    <tr><td>静态</td><td><code>pyflakes tools/pkb tools/tests tools/run.py</code></td><td class="num">0</td></tr>
+    <tr><td>最大卡余量</td><td>按字符数量 <code>wiki/政策卡片/**/*.md</code></td><td class="num">19137／20000（余 4.3%）</td></tr>
+    <tr><td>归档体积</td><td><code>du -sh 归档</code></td><td class="num">644K</td></tr>
+    <tr><td>来源待核</td><td><code>run.py check --only docs</code> 的提示行</td><td class="num">71 处</td></tr>
+  </tbody>
+</table>
+
+<h2><span class="num">八</span>门槛表</h2>
+
+<div class="gate"><div>每一维 ≥90</div><div class="st fail">不通过</div></div>
+<div class="gate"><div class="small" style="padding-left:0">内容 89 &lt; 90 —— 总分照报，结论写「未达标」</div><div></div></div>
+
+<div class="gate"><div>四条红线（AGENTS 零节）</div><div class="st pass">通过</div></div>
+<div class="gate"><div class="small">不编造来源／不改 raw 原文／不擅自建定时任务／不替人标定稿</div><div></div></div>
+
+<div class="gate"><div>四个时点必跑 check</div><div class="st pass">通过</div></div>
+<div class="gate"><div class="small">采集 09:00／周观点 10:30／体检 22:00／归档周日 21:00；最近一次 10-28 22:00 exit 0</div><div></div></div>
+
+<div class="gate"><div>每项检查退出码</div><div class="st pass">通过</div></div>
+<div class="gate"><div class="small">11 行全 0，按项判、不拿整体码代替</div><div></div></div>
+
+<div class="gate"><div>CI：pyflakes ＋ 空库单测</div><div class="st pass">通过</div></div>
+<div class="gate"><div class="small">pyflakes 0；空库 pytest 全过（本地 353 passed）</div><div></div></div>
+
+<div class="gate"><div>两库远端与本地逐字一致</div><div class="st pass">通过</div></div>
+<div class="gate"><div class="small">工作区 08a6dcc／资料库 7f17ba0，均与 origin 一致；但资料库有 2 处未提交</div><div></div></div>
+
+<div class="gate"><div>专家包入口是符号链接</div><div class="st pass">通过</div></div>
+<div class="gate"><div class="small">63 个脚本同一份，无副本（缓存那份实体副本是平台行为，已登记 T-20261029-01）</div><div></div></div>
+
+<h2><span class="num">九</span>要你拍板的三件事</h2>
+
+<ol class="todo">
+  <li><b>内容维怎么上 90。</b>两条路：提高每轮补观点的配额（现在是 T+1 必清＋存量配额），或压一下建卡节奏。前者加机器负担，后者减产出。都不做的话，89 会一直挂着——补的速度与新增大致持平。</li>
+  <li><b>专家包缓存那份旧副本。</b>请在<b>专家中心 → 我的专家 → 政务分析助手 → 更新／重新注册</b>点一次，把 11.7 KB 的 10-24 版刷成 30 KB 的现行版。要不要另加一条判据（「缓存副本与源一致」）也请你定：加了多一条判据，不加则每次改专家定义都只能靠人记得去点。</li>
+  <li><b>三处扣分要不要现在修。</b>两条自相矛盾＋一条撒谎，都是十分钟能改完的文本改动。我可以直接改——但改的是专家定义与 AGENTS，按惯例先问你。</li>
+</ol>
+
+<footer>
+  第五版 · 2026-10-29 · 口径：[[评估口径]]（六维等权 ＋ 四类扣分 ＋ 七项门槛）<br>
+  前四版：75.3（10-28 首版）→ 85.0（v2）→ 92.3（v3，按新算分约束重算）→ 93.0（v4）。本版首次启用扣分，且首次把「脚本／知识库／专家／结构」四块分开评。<br>
+  口径变更记在 <code>log.md</code>；本报告不改旧版。
+</footer>
+
+</div>
+</body>
+</html>
