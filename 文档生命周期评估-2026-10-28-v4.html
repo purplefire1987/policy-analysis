@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>文档全生命周期管理评估 · 第四版 · 2026-10-28</title>
+<style>
+  :root{
+    --ink:#1a1d21; --ink2:#4a5158; --ink3:#7a828a;
+    --line:#e3e6ea; --bg:#ffffff; --panel:#f7f8fa;
+    --good:#1f7a4d; --warn:#a8620a; --bad:#b3261e; --accent:#2b5f9e;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; padding:0 0 72px; background:var(--bg); color:var(--ink);
+    font:16px/1.75 -apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:860px;margin:0 auto;padding:0 26px}
+  header{padding:56px 0 30px;border-bottom:3px solid var(--ink)}
+  .kicker{font-size:13px;letter-spacing:.14em;color:var(--ink3);text-transform:uppercase;margin-bottom:14px}
+  h1{font-size:31px;line-height:1.35;margin:0 0 16px;font-weight:700;letter-spacing:-.01em}
+  .sub{color:var(--ink2);font-size:15px;margin:0}
+  .sub b{color:var(--ink)}
+
+  .scoreboard{
+    display:grid;grid-template-columns:172px 1fr;gap:34px;align-items:center;
+    padding:34px 0;border-bottom:1px solid var(--line);
+  }
+  .total{border-right:1px solid var(--line);padding-right:20px}
+  .total .n{font-size:62px;line-height:1;font-weight:700;letter-spacing:-.03em}
+  .total .n small{font-size:20px;color:var(--ink3);font-weight:400}
+  .total .cap{font-size:13px;color:var(--ink3);margin-top:10px}
+  .delta{font-size:13px;color:var(--good);margin-top:6px;font-weight:600}
+  .bars{display:grid;gap:9px}
+  .bar{display:grid;grid-template-columns:118px 1fr 46px;gap:12px;align-items:center;font-size:13.5px}
+  .bar .lab{color:var(--ink2);text-align:right}
+  .bar .track{height:8px;background:#eceef1;border-radius:4px;overflow:hidden}
+  .bar .fill{height:100%;border-radius:4px;background:var(--accent)}
+  .bar .fill.under{background:var(--warn)}
+  .bar .val{font-variant-numeric:tabular-nums;font-weight:600;text-align:right}
+
+  h2{font-size:20px;margin:52px 0 8px;padding-bottom:10px;border-bottom:1px solid var(--line);font-weight:700}
+  h2 .num{color:var(--ink3);font-weight:400;margin-right:9px;font-variant-numeric:tabular-nums}
+  p{margin:14px 0}
+  .lead{color:var(--ink2)}
+
+  table{width:100%;border-collapse:collapse;margin:18px 0;font-size:14.5px}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-size:12.5px;letter-spacing:.05em;color:var(--ink3);font-weight:600;text-transform:uppercase}
+  td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+  tr.hi td{background:#fbfcfd}
+
+  .dim{margin:26px 0 0;padding:0 0 26px;border-bottom:1px dashed var(--line)}
+  .dim:last-of-type{border-bottom:none}
+  .dim h3{font-size:17px;margin:0 0 4px;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+  .dim h3 .pts{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--ink3);font-size:14px;font-weight:400}
+  .dim h3 .pts b{color:var(--ink);font-size:18px}
+  .dim h3 .pts b.under{color:var(--warn)}
+  .dim h3 .pts b.flat{color:var(--ink3)}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:14px}
+  .cols h4{font-size:12.5px;letter-spacing:.06em;margin:0 0 8px;color:var(--ink3);text-transform:uppercase}
+  .cols ul{margin:0;padding-left:17px;font-size:14px;line-height:1.7}
+  .cols li{margin-bottom:7px}
+  .do h4{color:var(--good)}
+  .dont h4{color:var(--bad)}
+
+  .box{background:var(--panel);border-left:3px solid var(--accent);padding:16px 20px;margin:22px 0;font-size:14.5px}
+  .box p{margin:0 0 10px}
+  .box p:last-child{margin-bottom:0}
+  .box b{color:var(--accent)}
+  .box.warn{border-left-color:var(--warn)}
+  .box.warn b{color:var(--warn)}
+  .box.bad{border-left-color:var(--bad)}
+  .box.bad b{color:var(--bad)}
+
+  .todo{counter-reset:t;list-style:none;padding:0;margin:20px 0}
+  .todo li{
+    counter-increment:t;position:relative;padding:15px 0 15px 46px;
+    border-bottom:1px solid var(--line);font-size:15px;
+  }
+  .todo li::before{
+    content:counter(t);position:absolute;left:0;top:15px;
+    width:27px;height:27px;border-radius:50%;background:var(--ink);color:#fff;
+    font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;
+  }
+  .todo .who{display:inline-block;font-size:11.5px;padding:1px 8px;border-radius:3px;
+    background:#eceef1;color:var(--ink2);margin-left:8px;vertical-align:1px}
+  .todo .why{display:block;color:var(--ink2);font-size:13.5px;margin-top:6px}
+
+  code{font-family:"SF Mono",Menlo,Consolas,monospace;font-size:13px;background:#f0f2f4;padding:1.5px 5px;border-radius:3px}
+  pre{background:#1a1d21;color:#e8eaed;padding:14px 16px;border-radius:5px;overflow-x:auto;font-size:13px;line-height:1.6}
+  pre code{background:none;color:inherit;padding:0}
+  footer{margin-top:64px;padding-top:22px;border-top:1px solid var(--line);font-size:13px;color:var(--ink3)}
+  @media (max-width:680px){
+    .scoreboard{grid-template-columns:1fr;gap:24px}
+    .total{border-right:none;border-bottom:1px solid var(--line);padding:0 0 20px}
+    .cols{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="kicker">第四版 · 2026-10-28 23:10</div>
+  <h1>文档全生命周期管理评估</h1>
+  <p class="sub">
+    <b>口径一个字没动</b>——还是第三版那三条（格式只算进库、不计并发、归档只认已终止），还是那六个维度、等权平均。
+    变的是 17:10 之后做的四件事：<b>归档接入自动化、删掉两个反向动作、判据改成量职能、文档改回与代码一致</b>。
+    总分 <b>93.0</b>，比上一版高 <b>0.7</b>。涨幅小是刻意的：<b>今晚做的多数是减法，减法不该换来分数膨胀。</b>
+  </p>
+</header>
+
+<div class="scoreboard">
+  <div class="total">
+    <div class="n">93.0<small>／100</small></div>
+    <div class="cap">六维等权平均</div>
+    <div class="delta">↑ 较第三版 +0.7</div>
+  </div>
+  <div class="bars">
+    <div class="bar"><span class="lab">内容与结构化</span><span class="track"><span class="fill under" style="width:89%"></span></span><span class="val">89</span></div>
+    <div class="bar"><span class="lab">格式转换</span><span class="track"><span class="fill" style="width:93%"></span></span><span class="val">93</span></div>
+    <div class="bar"><span class="lab">编辑与版式</span><span class="track"><span class="fill" style="width:92%"></span></span><span class="val">92</span></div>
+    <div class="bar"><span class="lab">安全与审计</span><span class="track"><span class="fill" style="width:95%"></span></span><span class="val">95</span></div>
+    <div class="bar"><span class="lab">自动化与 AI</span><span class="track"><span class="fill" style="width:95%"></span></span><span class="val">95</span></div>
+    <div class="bar"><span class="lab">归档与生命周期</span><span class="track"><span class="fill" style="width:94%"></span></span><span class="val">94</span></div>
+  </div>
+</div>
+
+<h2><span class="num">01</span>三版到四版：分从哪儿来，不从哪儿来</h2>
+
+<p class="lead">第三版靠「改口径」把 85 拉到 92.3；这一版没有新口径可用，所以一分一分都要落在<b>可复跑的事实</b>上。</p>
+
+<table>
+  <thead><tr><th>维度</th><th>三版</th><th>四版</th><th>变动依据（没有依据的一律不加）</th></tr></thead>
+  <tbody>
+    <tr><td>内容获取与结构化</td><td class="num">89</td><td class="num">89</td><td><b>持平</b>。三项存量债一条未动：观点仍 26 节空、来源仍 59 处待核、157 节仍只对应 37 份存档。今晚没采集、没补观点</td></tr>
+    <tr class="hi"><td>格式转换</td><td class="num">93</td><td class="num">93</td><td><b>持平</b>。<code>render</code>（出库）被删掉了，<b>但不扣分</b>——口径本来就不算出库；也不再拿它当加分项。这一维现在只剩四类进库格式的事</td></tr>
+    <tr><td>编辑与版式</td><td class="num">92</td><td class="num">92</td><td><b>持平</b>。一张卡都没改。但纠正了上一版一个读错的数，见第四节</td></tr>
+    <tr class="hi"><td>安全合规与审计</td><td class="num">95</td><td class="num">95</td><td><b>持平</b>。远端一致是上一版就给过分的强度，今晚又推了几次不构成新能力；而且今晚<b>又犯了一次</b>上次记过的归纳错误</td></tr>
+    <tr class="hi"><td>自动化与 AI 增强</td><td class="num">93</td><td class="num">95</td><td><b>+2</b>：归档接入第四个自动化，且<b>挂上去之前先让写盘幂等</b>；判据从「量总行」改成「量有效代码行」，并给判据自己加了测试；<code>status</code> 的取值不再一处格式问题就全崩</td></tr>
+    <tr class="hi"><td>归档与生命周期</td><td class="num">92</td><td class="num">94</td><td><b>+2</b>：归档从「有动作、等人按」变成<b>有节拍</b>（每周日 21:00）；保留策略第一次被真正执行——撤掉一整条不再成立的分档，删掉 14 个导出件与两个 tar（基线可取回）</td></tr>
+    <tr><td><b>等权平均</b></td><td class="num"><b>92.3</b></td><td class="num"><b>93.0</b></td><td>558 ÷ 6</td></tr>
+  </tbody>
+</table>
+
+<div class="box">
+  <p><b>为什么只有两维涨。</b>今晚动了代码、动了文档、删了产物，但<b>内容一条没增、卡片一张没改</b>。给内容维加分的唯一理由是「存量债清了几笔」，而它一笔没清；给安全维加分需要新的保障能力，而今晚只是把同一件事又做了几遍。<b>分数跟着事实走，不跟着工作量走。</b></p>
+</div>
+
+<h2><span class="num">02</span>逐维：做到了什么，扣在哪</h2>
+
+<div class="dim">
+  <h3>内容获取与结构化 <span class="pts"><b class="under">89</b> / 100<span style="color:var(--ink3)"> 持平</span></span></h3>
+  <div class="cols">
+    <div class="do"><h4>做到了</h4><ul>
+      <li>157 个政策小节全部有「文号」栏：<b>待补仍只剩 2 处</b>，其余填实或按文类标「无文号」并写依据</li>
+      <li>37 份一手存档：日期交叉核对 37 一致、<b>未回流 0</b>、待归档 0</li>
+      <li>信号 121 条，七字段完整率 100%；「走向」只认继续／调整／终结三档</li>
+      <li>今晚唯一碰这一维的动作是<b>把一句谎改掉</b>：一手源清单原写「现为 34 份」，改成带日期的历史读数（当日 10-26 为 34，现值一律现场跑 <code>check --only archives</code>）</li>
+    </ul></div>
+    <div class="dont"><h4>扣在哪</h4><ul>
+      <li>观点覆盖率 <b>131/157 = 83.4%</b>：越过 80 红线，距 90 分要的 141 节还差 10 节；另 22 节不足 5 条</li>
+      <li><b>59 处来源标着「待核／未能核实」</b>（分布在 57 行、16 张卡，稀土与医疗最集中）</li>
+      <li>157 节只对应 37 份存档——约四分之三的政策仍没有一手原文</li>
+    </ul></div>
+  </div>
+</div>
+
+<div class="dim">
+  <h3>格式转换（只算进库，终点 TXT） <span class="pts"><b class="flat">93</b> / 100<span style="color:var(--ink3)"> 持平</span></span></h3>
+  <div class="cols">
+    <div class="do"><h4>做到了</h4><ul>
+      <li>八类格式各有明确处置：<code>txt/md/csv/json/xml</code> 直读（utf-8 → gb18030 → utf-16）、<code>docx</code> 解 zip+XML、<code>doc</code> 走 textutil、<code>pdf</code> 抽文并接回断行、<code>xlsx</code>／<code>html</code> 自解</li>
+      <li>表格一律还原成 <code>| 单元格 |</code>：清单与阈值表的全部价值在「哪一列对哪一行」</li>
+      <li>转不了必须分清四种：要 OCR／缺库／文件坏了／格式不支持——一句话盖住等于四种都不做</li>
+      <li>附件按扩展名分派，含 <code>download?fileName=x.docx</code> 这类不带扩展名的写法</li>
+    </ul></div>
+    <div class="dont"><h4>扣在哪</h4><ul>
+      <li>扫描件没有 OCR，只标出来交给人——工具不猜，这是刻意的</li>
+      <li><code>.doc</code> 依赖 macOS 的 <code>textutil</code>，换环境退化成「另存」</li>
+      <li><code>.xls/.wps/.et/.ofd</code> 标准库解不了，明说「没有转换器」<b>而不说「转换失败」</b></li>
+      <li><b>这一维今晚没有增益，也不该有</b>：删掉出库能力是口径一致化，不是格式能力的变化</li>
+    </ul></div>
+  </div>
+</div>
+
+<div class="dim">
+  <h3>编辑与版式 <span class="pts"><b class="flat">92</b> / 100<span style="color:var(--ink3)"> 持平</span></span></h3>
+  <div class="cols">
+    <div class="do"><h4>做到了</h4><ul>
+      <li>四张超限卡是<b>序列卡</b>（金融／医疗／对外贸易／出口管制）：主卡留 frontmatter／callout／索引表，小节按日期装箱成卷</li>
+      <li>卷名就是日期区间（同月 <code>2026-10</code>、跨月 <code>2025-11至2026-09</code>），字典序＝时间序；新政策只追加最新卷</li>
+      <li>三条判据盯序列卡：索引漏行、索引指向不存在的卷、卷内小节越界，各报各的</li>
+      <li>模板每一栏都有检查点：callout 五项、六个小标题、文号、生效日期、影响判断三行</li>
+    </ul></div>
+    <div class="dont"><h4>扣在哪</h4><ul>
+      <li><b>能源卡 19137 字符，距 20000 提示线只剩 863 字符</b>——全库唯一一张接近超限却还没拆的平铺卡，下一个能源政策接入就要处理</li>
+      <li>「版式好不好看」没人看过：本库不出别的格式，影响小，但也不能算已核</li>
+      <li>按日期装箱的代价：跨卷的政策演进要来回跳，换来的是「新政策只追加、不重排」</li>
+    </ul></div>
+  </div>
+</div>
+
+<div class="dim">
+  <h3>安全合规与审计 <span class="pts"><b class="flat">95</b> / 100<span style="color:var(--ink3)"> 持平</span></span></h3>
+  <div class="cols">
+    <div class="do"><h4>做到了</h4><ul>
+      <li>两库远端与本地逐字一致（工作区 <code>14e2307</code>／资料库 <code>9fff22b</code>），待提交 0；改错能回滚，硬盘坏了还有一份</li>
+      <li>今晚真用上了一次历史：<code>.gitignore</code> 那条写错的 <code>????????</code> 规则，靠 <code>check_vcs</code> 报红 44 个暴露出来，换成锚定字符类后归零</li>
+      <li>误提交进库的 8 字符探针文件已全部移出，<code>git ls-files</code> 里一个不剩</li>
+      <li><code>check_vcs</code> 只核「<code>.gitignore</code> 声明的排除有没有被跟踪」，不写死目录——规则改了不用改代码（今天正是靠这一点抓住了错规则）</li>
+    </ul></div>
+    <div class="dont"><h4>扣在哪</h4><ul>
+      <li>CI 只在空库跑 pytest，不跑真库体检；推送没有自动化，靠人记得</li>
+      <li>仓库私有、账号单点，没有第二个人能读的备份策略</li>
+      <li><b>今晚又犯了一次已记录的错误</b>：<code>.git/index.lock</code> 删不掉，就把「这条命令失败」升成「这个能力坏了」，绕了十来分钟才回头做定向删除，一 <code>rm</code> 就过</li>
+    </ul></div>
+  </div>
+</div>
+
+<div class="dim">
+  <h3>自动化与 AI 增强 <span class="pts"><b>95</b> / 100<span style="color:var(--good)"> +2</span></span></h3>
+  <div class="cols">
+    <div class="do"><h4>做到了</h4><ul>
+      <li><b>归档接入第四个自动化</b>（<code>da7f747a</code>，周日 21:00），与采集 09:00／体检 22:00／周观点周一 10:30 全错开；四个自动化各一份现行提示词</li>
+      <li><b>挂定时任务之前先让写盘幂等</b>：原来每次运行都写 <code>归档/index.md</code>、模板带时间戳，一年会积 52 条「只有时间变了」的提交；现在只差时间戳即判「内容未变，未写盘」</li>
+      <li>判据从「量总行」改成「<b>量有效代码行</b>＋按层分档」（<code>checks/</code> ≤40、其余 ≤60），另加一条<b>自测判据</b>——判据自己不实测等于没写</li>
+      <li><code>status</code> 的灯改为只读「当前状态」一节、认四档、取不到写「（灯未填）」；补 4 条用例。<b>它原来是三条命令里唯一没被测试过的</b></li>
+      <li>动作 18 → <b>16</b>：删掉 <code>render</code>（与「不出库」口径相反）与 <code>preflight</code>（其 docstring 自己写着「保留的唯一理由是文档里出现过」）</li>
+    </ul></div>
+    <div class="dont"><h4>扣在哪</h4><ul>
+      <li>失败不会主动通知：告警页是异步的，得有人去翻</li>
+      <li>四个自动化之间没有超时／重试约定，一个挂住另一个照跑</li>
+      <li>「要知道」那档靠摘要行里的关键词判定，新写一种措辞就可能漏判</li>
+      <li>归档自动化<b>还没跑过第一次</b>（首跑 11-01），幂等只在手工跑里验过</li>
+    </ul></div>
+  </div>
+</div>
+
+<div class="dim">
+  <h3>归档与生命周期 <span class="pts"><b>94</b> / 100<span style="color:var(--good)"> +2</span></span></h3>
+  <div class="cols">
+    <div class="do"><h4>做到了</h4><ul>
+      <li><b>归档有了节拍</b>：从「有动作、等人想起来按」变成每周日 21:00 自动重建索引，<code>归档/index.md</code> 四节（原文存档／已终止／文件清单／备份包）</li>
+      <li><b>保留策略第一次被真正执行</b>：<code>归档/导出/*</code> 整条分档撤掉（库不出库，没有「可随时重建的成品」这回事），14 个成品与两个 tar 一并删除，<b>归档 1.6M → 644K</b></li>
+      <li>删之前先确认可回滚：两个 tar 里的旧卡原貌在基线提交 <code>e7c2642</code> 里，<code>git show</code> 取得到</li>
+      <li>保留判据仍按<b>可重建性</b>：<code>归档/备份/raw-articles-分流前-20261026/</code>（58 份一手原文，重取不回来）原样留着，占 624K 就是它的代价</li>
+      <li><code>run.py ledger</code> 三档推生命周期，默认 dry-run、幂等，归档＝整行进第六节，不删行</li>
+    </ul></div>
+    <div class="dont"><h4>扣在哪</h4><ul>
+      <li>库里<b>当前 0 条已终止政策</b>——「整节移入归档、卡里留一行指针」这条路径至今只在单测里验过，没有真实样本</li>
+      <li>搬运是人的动作，脚本只报不搬：刻意的，但意味着「待归档」会一直挂到有人动手</li>
+      <li>首跑未到（11-01），「内容未变不写盘」在定时场景下还没被真实节拍检验过一次</li>
+    </ul></div>
+  </div>
+</div>
+
+<h2><span class="num">03</span>这一版纠正了上一版两个错</h2>
+
+<p>上一版有三处判断我现在认为不成立或不准，改在这儿，不改在旧文件里——旧文件留着做对照。</p>
+
+<ol class="todo">
+  <li>最大单份卡的数字是错的<span class="who">纠正</span>
+    <span class="why">第三版写「最大单份 18.9K」。18.9K 是<b>医疗卷</b>的字符数，不是全库最大。全库最大是<b>能源卡 19137 字符</b>，一张没拆过的平铺卡，距 20000 提示线只剩 863 字符。结论没错（无体积警告），但依据取错了对象——<b>「没有警告」不等于「余量充足」</b>。</span></li>
+  <li>「收口 6 处」这个故事我自己讲反过一次<span class="who">已修正</span>
+    <span class="why">第三版引用得好，但台账里那条教训原写「5 处 glob」，漏掉的正是给 <code>index.md</code> 写「共 N 张」的那台机器（它把 33 写成 29，而 <code>check_docs</code> 因快照与文档一起错而放行）。本轮把台账改为「6 处」，并写明<b>收口不能凭印象列清单，要 grep 全仓</b>。</span></li>
+  <li>把「一条命令失败」升成「能力坏了」<span class="who">再犯</span>
+    <span class="why">第三版专门记过这条（<code>curl</code> 少了 <code>--compressed</code> 被归成「站点反爬」）。今晚 <code>.git/index.lock</code> 删不掉，我又一次把它写成「本会话无法提交」，还试了备用索引这种绕路——真正的拦路只是一个 0 字节文件，定向 <code>rm</code> 就过。<b>这条不扣分，但它说明这个毛病还没治好。</b></span></li>
+</ol>
+
+<h2><span class="num">04</span>唯一没到 90 的那一维，差什么</h2>
+
+<p>「内容获取与结构化」仍是 89，和上一版一样，<b>因为这三笔债今晚一笔没还</b>：</p>
+
+<table>
+  <thead><tr><th>缺什么</th><th>现状</th><th>到 90 需要</th><th>归属</th></tr></thead>
+  <tbody>
+    <tr class="hi"><td>各方观点空着</td><td class="num">26 节（覆盖率 83.4%）</td><td class="num">再补 10 节到 141/157</td><td>采集，按 T+1 ＋存量批次</td></tr>
+    <tr><td>来源待核</td><td class="num">59 处／57 行／16 张卡</td><td class="num">换回官方链接，只降不升</td><td>采集，按链条分批</td></tr>
+    <tr class="hi"><td>一手原文覆盖</td><td class="num">157 节／37 份存档</td><td class="num">长尾，短期不动</td><td>取决于站点可及性</td></tr>
+  </tbody>
+</table>
+
+<p>按现行配额（每轮保底 3 个、周目标 5 个），26 节需 5–8 轮；而每轮还在新增 1–3 节，补的速度与新增大致持平。<b>要真正到 90，得先决定是提高每轮配额，还是压一下建卡节奏。</b>这是取舍，不是我能替你定的。</p>
+
+<div class="box warn">
+  <p><b>为什么不把这一维写成 90。</b>因为写上去只要改一个数字，而数字一改，第四节这张表就没有存在理由了。它现在指向的是<b>配额与节奏</b>，不是又缺一个脚本——今晚新写的脚本对这三笔债一分钱都不管用。</p>
+</div>
+
+<h2><span class="num">05</span>验证读数（可复跑）</h2>
+
+<table>
+  <thead><tr><th>项</th><th>读数</th><th>怎么复现</th></tr></thead>
+  <tbody>
+    <tr class="hi"><td>十一项检查</td><td>全部 exit 0；要处置 0 条、要知道 1 条</td><td><code>run.py check</code></td></tr>
+    <tr><td>远程同步</td><td>两库 <code>ls-remote</code> 的 HEAD 与 <code>rev-parse HEAD</code> 一致；待提交 0</td><td><code>git ls-remote origin</code> 对比 <code>git rev-parse HEAD</code></td></tr>
+    <tr class="hi"><td>动作数</td><td>16 个（原 18，删 <code>render</code>／<code>preflight</code>）</td><td><code>run.py list</code></td></tr>
+    <tr><td>自动化</td><td>4 个，各 1 份现行提示词；归档首跑 2026-11-01</td><td><code>run.py check --only prompts</code></td></tr>
+    <tr class="hi"><td>单测</td><td>332 通过 + 51 subtests（原 337：删 11 条出库用例、加 4 条 status 用例）</td><td><code>pytest tools/tests</code></td></tr>
+    <tr><td>静态检查</td><td>pyflakes 0 问题</td><td><code>python3 -m pyflakes tools</code></td></tr>
+    <tr class="hi"><td>卡片结构</td><td>33 卡／157 小节；体积警告 0；<b>最大单份 19137 字符（能源卡）</b></td><td><code>run.py check --only structure</code></td></tr>
+    <tr><td>一手存档</td><td>37 份；日期一致 37、未回流 0、待归档 0</td><td><code>run.py check --only archives</code></td></tr>
+    <tr class="hi"><td>观点覆盖率</td><td>131/157 = 83.4%（红线 80）</td><td><code>run.py check --only views</code></td></tr>
+    <tr><td>文号／来源待核</td><td>待补 2 处；待核 59 处</td><td><code>grep -rn 待补全 wiki/政策卡片</code></td></tr>
+    <tr class="hi"><td>归档体积</td><td>644K（其中备份 624K 是 58 份不可重建的原文）</td><td><code>du -sh 归档</code></td></tr>
+  </tbody>
+</table>
+
+<footer>
+  第四版 · 2026-10-28 23:10 · 六维等权平均 93.0 分<br>
+  口径沿用第三版：格式只算进库（终点 TXT）、不计多人并发、归档只认已终止。<br>
+  同一套 CSS 沿用前三版，方便四版并排对照；上一版不改，做对照用。
+</footer>
+
+</div>
+</body>
+</html>
