@@ -26,16 +26,89 @@ AGENTS.md、index.md、log.md、README.md（删除条件写错），靠刚建的
 改成核「`.gitignore` 声明要排除的，实际有没有被跟踪」（`git ls-files -ci`）：
 规则住在 `.gitignore` 里，判据只问「声明的和事实一致吗」。这样改排除清单时
 不用同步改代码，也不会出现「判据记住的是旧决定」。
+
+沙箱探针（2026-10-29 增）
+------------------------
+沙箱拦下删除（安全中心「询问」层，不是规则拒绝）时，为了判断「这个目录能不能写」，
+会在**被操作的目录**里落一个探测文件：8 位随机名（字符集 `[a-z0-9_]`）、
+内容固定 4 字节 `blat`、权限 0600。随后真正要删的那一步同样被拦，探针就留在原地。
+
+它不属于本项目，也没有任何代码引用它；但因为它不是 `.gitignore` 里写明的排除项，
+`git add -A` 会照收——2026-10-29 一天里就有 109 个这样进了版本库。
+**判据三重全中才认**（名字 8 位 `[a-z0-9_]` ＋ 大小 4 字节 ＋ 内容恰为 `blat`），
+宁可漏认也不错认：删错一个 4 字节文件，比多留十个垃圾严重。
 """
 import argparse
+import os
+import re
 import time
+from pathlib import Path
 
-from pkb.core import VAULT, Result, Verdict
+from pkb.core import (SKIP_DIRS, TMP_DIR, TOOLS, VAULT, WORKSPACE, Result,
+                      Verdict)
 from pkb.core.git import available, is_repo, run_git
 from pkb.domain import VCS_STALE_DAYS
 
 # 未提交明细最多打几条：全打会把 33 张卡的改动铺满一屏，反而看不见结论。
 SHOW = 8
+
+# 探针的三重特征。三者缺一不认——只凭「4 字节」或「8 字符名」会误伤正常小文件。
+PROBE_NAME = re.compile(r'^[a-z0-9_]{8}$')
+PROBE_BODY = b'blat'
+PROBE_SIZE = 4
+# 只查「命令会落脚的四处」的浅层。整树走一遍要 283 ms（工作区 .cache/ 里一万多个
+# 抓取缓存），而探针只出现在执行命令的当前目录。漏在更深处的那些，`git status`
+# 的未跟踪提示看得见，不靠这条兜底。
+PROBE_BASES = (WORKSPACE, TOOLS, VAULT, TMP_DIR)
+PROBE_DEPTH = 1
+
+
+def _shallow(base, depth):
+    """限深列出文件：`depth=1` 只到 base 与它的一级子目录。
+
+    为什么不整树 walk：工作区 `.cache/` 里躺着一万多个抓取缓存文件（53 MB），
+    全走一遍 283 ms，而这项判据一年也答不上一次「有」。
+    """
+    if not base.is_dir():
+        return
+    stack = [(base, 0)]
+    while stack:
+        d, lv = stack.pop()
+        try:
+            entries = list(os.scandir(d))
+        except OSError:
+            continue
+        here = []
+        for e in entries:
+            try:
+                if e.is_dir(follow_symlinks=False):
+                    if lv < depth and e.name not in SKIP_DIRS:
+                        stack.append((Path(e.path), lv + 1))
+                elif e.is_file(follow_symlinks=False):
+                    here.append(e)
+            except OSError:
+                continue
+        yield d, here
+
+
+def _probes():
+    """找出沙箱探针（三重特征全中）。只读，不改盘。"""
+    found = []
+    for base in PROBE_BASES:
+        for d, entries in _shallow(base, PROBE_DEPTH):
+            for e in entries:
+                if not PROBE_NAME.match(e.name):
+                    continue
+                try:
+                    if e.stat(follow_symlinks=False).st_size != PROBE_SIZE:
+                        continue
+                    with open(e.path, 'rb') as fh:
+                        if fh.read() != PROBE_BODY:
+                            continue
+                except OSError:
+                    continue
+                found.append(os.path.join(str(d), e.name))
+    return found
 
 
 def _facts():
@@ -48,6 +121,7 @@ def _facts():
     f = {'commits': cnt.strip(),
          'dirty': [l for l in dirty.splitlines() if l.strip()],
          'leaked': [l for l in leaked.splitlines() if l.strip()],
+         'probes': _probes(),
          'last_ts': 0, 'last_subj': ''}
     if '\x00' in last:
         ts, subj = last.split('\x00', 1)
@@ -79,6 +153,12 @@ def _diagnose(f):
         hard.append(f".gitignore 声明要排除、实际仍被跟踪 {len(f['leaked'])} 个文件"
                     f"（{('、'.join(dirs[:3]) or '根目录')}）——"
                     '排除规则失效，下次改动会继续进库')
+    if f['probes']:
+        # 只举一个例子：这类文件长得一模一样，列全了反而看不出「它们是什么」。
+        sample = f['probes'][0].replace(str(WORKSPACE) + '/', '').replace(str(VAULT) + '/', '')
+        hard.append(f"{len(f['probes'])} 个沙箱探针残留（4 字节 `blat`／8 位随机名，"
+                    f"如 `{sample}`）——不属于本项目，下次 `git add -A` 会连它们一起进库；"
+                    '跑 `run.py fix` 清掉（三重特征全中才删，不会误伤）')
     if f['dirty']:
         soft.append(f"{len(f['dirty'])} 处改动未提交："
                     + '、'.join(x[:40] for x in f['dirty'][:SHOW])
@@ -89,6 +169,26 @@ def _diagnose(f):
             soft.append(f'最近一次提交在 {days} 天前（判据 {VCS_STALE_DAYS} 天）——'
                         '这期间的改动没有历史，只有末态')
     return hard, soft
+
+
+def run_fix():
+    """`run.py fix` 的探针清理。返回 (清掉几个, 明细行)。
+
+    只删 `_probes()` 认定过的（名／大小／内容三重全中），**不做任何猜测**：
+    4 字节的文件很多（空 `.gitkeep` 之类），凭大小删会重演 10-28 那次误删四个文档。
+    """
+    removed, lines = 0, []
+    for p in _probes():
+        try:
+            os.remove(p)
+        except OSError as e:
+            lines.append(f'  删不掉 {p}：{e}')
+            continue
+        removed += 1
+        lines.append(f'  删除 沙箱探针 {p}')
+    if not removed and not lines:
+        lines.append('  跳过 无沙箱探针')
+    return removed, lines
 
 
 def run(argv=None):
@@ -107,7 +207,8 @@ def run(argv=None):
     hard, soft = _diagnose(f)
     lines = ['=== 版本控制 ===',
              f"提交 {f['commits']} 次 · 未提交 {len(f['dirty'])} 处"
-             f" · 最近一次：{(f['last_subj'] or '（无）')[:48]}"]
+             + (f" · 沙箱探针 {len(f['probes'])} 个" if f['probes'] else '')
+             + f" · 最近一次：{(f['last_subj'] or '（无）')[:48]}"]
     lines += [f'  ✗ {m}' for m in hard] + [f'  · {m}' for m in soft]
     if not hard and not soft:
         lines.append('（工作区干净：当前所有改动都已进历史）')

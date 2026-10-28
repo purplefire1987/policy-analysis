@@ -40,7 +40,7 @@ REGISTRY = (
     Spec('check_prompts.py', prompts),
     Spec('check_signals.py', signals, flags=('--since', '--week')),
     Spec('check_structure.py', structure, fixable=True),
-    Spec('check_vcs.py', vcs),
+    Spec('check_vcs.py', vcs, fixable=True),      # fix 只清沙箱探针，不碰提交
     Spec('check_views.py', views),
     Spec('check_week_coverage.py', weeks, needs_all=True, flags=('--week', '--all')),
 )

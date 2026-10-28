@@ -88,7 +88,7 @@
 17. **并行子代理必 429**；`%%` 注释不成对会吞正文（用 `<!-- -->`）；能点开≠能核验。
 18. **止损不等于治因**：存档正文乱码先加 `looks_binary()` 只拦结果；真因是该站回 gzip 而 `curl` 没带 `--compressed`。**结果不对，往回追一层问从哪步开始不对。**
 19. **沙箱拦截会复发且不报错**：`rm`/`os.rename`/`mv`/`tempfile` 探测全败；**拦的是安全中心「询问」层，不是 seatbelt 规则先后**。变通：`Write`/`Edit` 写盘不受影响；`pytest` 用 `python3 -c "import tempfile; tempfile.tempdir='…'; pytest.main([…,'-p','no:cacheprovider'])"`；工具内已用 `core/tmp.py` 钉到 `.cache/tmp`。**复发先读 `~/.workbuddy/logs/sandbox/<日期>/sandbox_*_000.log` 的 profile 段与 blocked 列表。**
-20. **`git remote add`／`git commit` 可能被拦**（需重写 `.git/config`、`index.lock` 删不掉）。改用手工 Edit 配置文件；提交留给用户或环境恢复后。**`GIT_INDEX_FILE` 备用索引也跳不过**（git 写索引仍是 `.lock` + rename）。沙箱拦删时安全中心会在被操作目录留 8 位随机名、内容 `blat` 的 4 字节探针——写 `.git/info/exclude`（不进版本库，故不进 `check_vcs` 核对范围）。
+20. **`git remote add`／`git commit` 可能被拦**（需重写 `.git/config`、`index.lock` 删不掉）。改用手工 Edit 配置文件；提交留给用户或环境恢复后。**`GIT_INDEX_FILE` 备用索引也跳不过**（git 写索引仍是 `.lock` + rename）。沙箱拦删时安全中心会在被操作目录留 8 位随机名、内容 `blat` 的 4 字节探针。**处置已换过一轮**（2026-10-29）：原先写 `.git/info/exclude` 藏，后判定「藏」有害（会静默吞掉同名正当文件、删不掉时它也没用）而撤除；现在是 `check_vcs` 三重判据（名 `^[a-z0-9_]{8}$`＋4 字节＋内容 `blat`，全中才认）报红 + `run.py fix` 自动清。**不加 `.gitignore` 规则**——垃圾看得见比藏起来好，且判据比排除规则先发现「它又来了」。
 21. **测试不该因清理失败而红**：沙箱拦删除时 112 个用例假红，`conftest` 里吞掉 `TemporaryDirectory.cleanup` 异常。
 
 ## 八、评估与遗留
