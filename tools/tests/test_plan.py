@@ -75,3 +75,43 @@ class Test领活闸门(unittest.TestCase):
 
     def test_今天领过不能领(self):
         self.assertFalse(P.claim_ok(P.TODAY))
+
+
+LEDGER_DOC = """## 二、未闭环项
+
+| 编号 | 首次发现 | 问题 | 类型 | 负责环节 | 解法 | 状态 | 最近更新 | 关闭依据与下一步 |
+|---|---|---|---|---|---|---|---|---|
+| T-1 | 2026-10-01 | 甲 | 结构 | 采集 | 机器 | 🆕 待办 | 2026-10-01 | 待办 |
+| T-2 | 2026-10-01 | 乙 | 机制 | 体检 | 用户 | 🆕 待办 | 2026-10-01 | 待办 |
+| T-3 | 2026-10-01 | 丙 | 结构 | 采集 | 机器 | ✅ 已关闭 | 2026-10-01 | 已修 |
+| T-4 | 2026-10-01 | 丁 | 结构 | 体检 | 机器 | 🆕 待办 | 2026-10-01 | 待办 |
+"""
+
+
+class Test台账分堆(unittest.TestCase):
+    """「解法」把待办分成两堆：机器自己会做的，与等用户拍板的（2026-10-28 增）。
+
+    为什么测：用户读台账真正要问的是「这条要不要我动手」，而不是「账在谁名下」。
+    混在一起的代价是那些等拍板的行看起来像「没做完」，被反复派给采集。
+    """
+
+    def setUp(self):
+        self._old = P.read
+        P.read = lambda *_a, **_k: LEDGER_DOC
+
+    def tearDown(self):
+        P.read = self._old
+
+    def test_机器解法的进采集清单(self):
+        todo, _mine = P._todo()
+        self.assertEqual([t['id'] for t in todo],
+                         ['T-1'], '只抽 采集＋机器；体检的不派给采集，已关闭的不派')
+
+    def test_用户解法的单列不混进采集清单(self):
+        todo, mine = P._todo()
+        self.assertEqual([t['id'] for t in mine], ['T-2'])
+        self.assertNotIn('T-2', [t['id'] for t in todo])
+
+    def test_已关闭的不进任何一堆(self):
+        todo, mine = P._todo()
+        self.assertNotIn('T-3', [t['id'] for t in todo + mine])

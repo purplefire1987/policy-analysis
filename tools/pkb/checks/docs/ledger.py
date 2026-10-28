@@ -16,7 +16,8 @@ import re
 from pkb.core import (AGENTS, INDEX, README, EXPERT_MD, STATUS, OVERVIEW_DIR,
                       LEDGER, CHECK_REPORT, read, parse_date)
 from pkb.domain import ARCHIVE_DAYS, STALE_DAYS, VERIFY_DAYS, OBSERVE
-from pkb.domain.ledger import LEDGER_TYPES, LEDGER_OWNERS   # 不在 __all__，见 domain/__init__ 说明
+from pkb.domain.ledger import (LEDGER_TYPES, LEDGER_OWNERS, LEDGER_SOLUTIONS,
+                               LEDGER_COLS, col)   # 不在 __all__，见 domain/__init__ 说明
 
 from ._state import err, warn, ok
 
@@ -55,7 +56,7 @@ def check_no_direct_calls():
         ok('库内文档 0 处直调脚本（统一走 run.py）')
 
 
-LEDGER_HOMES = {'未闭环项': 8, '关闭记录': 5}
+LEDGER_HOMES = {'未闭环项': len(LEDGER_COLS), '关闭记录': 5}
 
 
 def _task_sections(text):
@@ -69,12 +70,30 @@ def _task_sections(text):
     return out
 
 
+def _header(text, key):
+    """`key` 那节的表头单元格；读不到返回 None。"""
+    lines = text.split('\n')
+    for i, line in enumerate(lines):
+        if line.startswith('## ') and key in line:
+            for nxt in lines[i + 1:]:
+                if nxt.startswith('## '):
+                    return None
+                if nxt.lstrip().startswith('|'):
+                    return [x.strip() for x in nxt.strip().strip('|').split('|')]
+            return None
+    return None
+
+
 def check_ledger_shape():
     """台账结构：T- 行必须住在两节之内、列数与表头一致、未闭环项里编号唯一。
 
     为什么单列（2026-10-26）：一条记录被粘成两行共用一行的形态（`… | ✅ 已关闭 | … || T-x | …`），
     `plan` 按行首取编号，后半条就**静默消失**——T-20261026-01 因此两天没进过派活清单，
     谁也没发现。同理有一行 ✅ 落在第五节后面，也读不到。判据认列数与节位，不认内容。
+
+    2026-10-28 加一条：**表头必须与 `domain/ledger.LEDGER_COLS` 逐字一致**。
+    理由是列序被三个模块按下标读——表头加了列而代码没跟上，读出来的就是相邻列，
+    「不报错、只是读错」。让表头本身成为契约，改列就必须改代码。
     """
     text = read(LEDGER, '')
     if not text:
@@ -82,6 +101,11 @@ def check_ledger_shape():
         return
     secs = _task_sections(text)
     bad = False
+    head = _header(text, '未闭环项')
+    if head and tuple(head) != LEDGER_COLS:
+        bad = True
+        err('台账', f'「未闭环项」表头是 {"｜".join(head)}，应为 {"｜".join(LEDGER_COLS)}'
+                    f'——列序是三个模块的下标契约，改表头必须同时改 domain/ledger.LEDGER_COLS')
     for name, rows in secs.items():
         home = next((k for k in LEDGER_HOMES if k in name), None)
         if not home:
@@ -124,9 +148,9 @@ def check_ledger_numbers():
         if not line.startswith('| T-'):
             continue
         c = [x.strip() for x in line.strip().strip('|').split('|')]
-        if len(c) < 8 or '✅' in c[5]:
+        if len(c) < len(LEDGER_COLS) or '✅' in c[col('状态')]:
             continue
-        hits = pat.findall(c[2])
+        hits = pat.findall(c[col('问题')])
         if hits:
             bad.append((c[0], hits))
     for tid, hits in bad:
@@ -137,7 +161,7 @@ def check_ledger_numbers():
 
 
 def ledger_rows(text):
-    """未闭环项里的 T- 行：[(全文行号, 八列)]。
+    """未闭环项里的 T- 行：[(全文行号, 九列)]。
 
     只认「未闭环项」这一节——落在别节的是结构问题，由 `check_ledger_shape` 报，
     这里不重复判（同一件事两处判，改口径就要改两处）。
@@ -158,7 +182,7 @@ def age_of(cell, today):
 
 
 def triage(text, today=None):
-    """把未闭环项分四堆：{archive, stale, overdue, observe} → [(行号, 八列, 为什么)]。
+    """把未闭环项分四堆：{archive, stale, overdue, observe} → [(行号, 九列, 为什么)]。
 
     动作（`run.py ledger`）与检查（每期体检）共用这一份判定：
     判定与执行各写一份，迟早一个判 3 天、一个判 5 天。
@@ -166,16 +190,16 @@ def triage(text, today=None):
     today = today or datetime.date.today()
     out = {'archive': [], 'stale': [], 'overdue': [], 'observe': []}
     for i, c in ledger_rows(text):
-        if len(c) < 8:
+        if len(c) < len(LEDGER_COLS):
             continue
-        age, st = age_of(c[6], today), c[5]
+        age, st = age_of(c[col('最近更新')], today), c[col('状态')]
         if '✅' in st and age is not None and age >= ARCHIVE_DAYS:
             out['archive'].append((i, c, f'关闭已 {age} 天'))
         elif '🟡' in st and age is not None and age > STALE_DAYS:
             out['stale'].append((i, c, f'{age} 天无动作'))
         elif '⏳' in st and age is not None and age > VERIFY_DAYS:
             out['overdue'].append((i, c, f'待验 {age} 天没结论'))
-        m = OBSERVE.search(c[7])
+        m = OBSERVE.search(c[col('关闭依据与下一步')])
         if m:
             ym = f'{m.group(1)}-{m.group(2)}'
             if ym <= today.strftime('%Y-%m'):
@@ -184,33 +208,37 @@ def triage(text, today=None):
 
 
 def check_ledger_values():
-    """「类型」「负责环节」两列只能取约定值（2026-10-26 增）。
+    """「类型」「负责环节」「解法」三列只能取约定值（2026-10-26 增，10-28 加解法）。
 
     为什么单列：取值表写在 AGENTS 与台账第一节，但以前一个字都没校验过。写错的代价
     不是报错，是**静默不被读**——`plan` 只抽「负责环节＝采集」，写成「采集入库」这一行
     就永远轮不到派活；类型写成「结构问题」，「内容类缺档」与「结构错」在体检里混成一类。
     与 T-20261026-01 那条「后半条静默消失」同形：账还在，只是没人再看它。
 
-    只判这两列，不判状态：状态是四态＋若干收尾写法（`✅ 已闭环`／`🚫 已放弃`／`⛔ 搁置`），
+    只判这三列，不判状态：状态是四态＋若干收尾写法（`✅ 已闭环`／`🚫 已放弃`／`⛔ 搁置`），
     措辞还在演进，硬判会把正确写法判错（判据宁窄不错认）。
-    关闭记录（五列）没有这两列，不查。
+    关闭记录（五列）没有这三列，不查。
     """
     text = read(LEDGER, '')
     if not text:
         warn('台账', '读不到任务台账，本项无法校验')
         return
     bad = 0
+    checks = ((col('类型'), LEDGER_TYPES, '类型'),
+              (col('负责环节'), LEDGER_OWNERS, '负责环节'),
+              (col('解法'), LEDGER_SOLUTIONS, '解法'))
     for i, c in ledger_rows(text):
-        if len(c) < 8:
+        if len(c) < len(LEDGER_COLS):
             continue                      # 列数不对由 check_ledger_shape 报，这里不重复判
-        for col, allowed, label in ((3, LEDGER_TYPES, '类型'), (4, LEDGER_OWNERS, '负责环节')):
-            if c[col] in allowed:
+        for idx, allowed, label in checks:
+            if c[idx] in allowed:
                 continue
             bad += 1
-            err('台账', f'{c[0]} 第 {i + 1} 行{label}「{c[col]}」不在取值表内'
+            err('台账', f'{c[0]} 第 {i + 1} 行{label}「{c[idx]}」不在取值表内'
                         f'（{"／".join(allowed)}）——取值写错不会报错，只会让这一行不再被读')
     if not bad:
-        ok(f'台账取值合规（{len(LEDGER_TYPES)} 类类型、{len(LEDGER_OWNERS)} 个负责环节）')
+        ok(f'台账取值合规（{len(LEDGER_TYPES)} 类类型、{len(LEDGER_OWNERS)} 个负责环节、'
+           f'{len(LEDGER_SOLUTIONS)} 种解法）')
 
 
 def _queue():

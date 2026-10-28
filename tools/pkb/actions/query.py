@@ -63,6 +63,33 @@ def chain_cards(name):
     return {m for m in re.findall(r'\[\[政策卡片-([^]#|]+)', body)}
 
 
+def card_keywords():
+    """{卡名: [关键词]}，现读卡片 frontmatter。
+
+    关键词此前是**只写不读**的字段（在必填表里，没有任何代码看它）。这里给它第一个
+    消费端：读者用的词与政策用的词常不一样——查「旅居车」不命中，因为库里写「房车」。
+    卡片关键词正是存这种别名的地方，所以检索时先按它兜一次底。
+    """
+    from pkb.core.fm import parse_fm
+    out = {}
+    for p in sorted(CARD_DIR.glob('*.md')):
+        fm, _body = parse_fm(read(p, ''))
+        kws = fm.get('关键词')
+        if isinstance(kws, list):
+            out[re.sub(r'^政策卡片-|\.md$', '', p.name)] = [
+                str(k) for k in kws if str(k).strip()]
+    return out
+
+
+def kw_cards(keyword, mapping):
+    """哪些卡的关键词接得住这个词（互为子串即算；短于 2 字不猜，那样几乎人人命中）。"""
+    q = keyword.strip()
+    if len(q) < 2:
+        return []
+    return [(card, k) for card, kws in mapping.items()
+            for k in kws if q in k or (len(k) >= 2 and k in q)]
+
+
 def body_text(sec):
     """小节正文（含标题行）。查询要的是原话，不做摘要——摘要就是判断。"""
     p = sec['dir'] / sec['file']
@@ -146,6 +173,14 @@ def run(argv=None):
             print(f'⚠ 政策链-{args.chain}.md 的「关联卡片」节没点到任何卡——链是空的')
     selected = select(collect(args.notes), args, cards)
     show(selected, args)
+
+    if args.keyword:
+        kw = kw_cards(args.keyword, card_keywords())
+        if kw:
+            print(f'\n这词也在卡片关键词里（{len(kw)} 处）——按卡看得到这块的全部政策，'
+                  f'不管正文有没有写这个说法：')
+            for card, k in kw[:8]:
+                print(f'  {card}｜关键词「{k}」→ run.py trace --card {card}')
 
     scope = '／'.join(x for x in (
         f'链 {args.chain}' if args.chain else '',

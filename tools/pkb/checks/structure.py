@@ -88,6 +88,43 @@ def _check_tags(name, fm, text):
             add(issues, '1-frontmatter', name, f'tags 含脏值「{t}」')
 
 
+def _check_keywords(name, fm, text):
+    """关键词必须是行内数组，且每一项都是干净的一个词（2026-10-28 增）。
+
+    为什么单列：这个字段从建库起就在 `REQUIRED_FIELDS` 里，却**没有任何代码读它的值**——
+    只写不读，于是坏成什么样都没人知道。实际盘点：18 张是行内数组、11 张写成块式、
+    4 张的行内数组里混着 Markdown 列表号（`[- 文化遗产, 旅游强国, …]`，解析出来第一项
+    就叫「- 文化遗产」）。**同库三种写法、一种还带脏值**，而校验一条都没有。
+
+    判据只认形态，不认好坏：关键词选得准不准是判断，脚本不该判（判了就是逼人凑数）。
+    """
+    kw = fm.get('关键词')
+    raw = raw_fm_text(text)
+    block = bool(re.search(r'(?m)^\s*关键词\s*[:：]\s*\n\s*-\s', raw))
+    if block:
+        add(issues, '1-frontmatter', name,
+            '关键词写成块式列表，本库统一行内数组 `[词1, 词2]`（同 tags 的规矩）')
+        return
+    if not isinstance(kw, list):
+        add(issues, '1-frontmatter', name, f'关键词不是数组：{str(kw)[:30]}')
+        return
+    if len(kw) < 3:
+        add(warns, '1-frontmatter', name, f'关键词只有 {len(kw)} 个，检索时几乎不起作用')
+    seen = set()
+    for k in kw:
+        if not isinstance(k, str) or not k.strip():
+            add(issues, '1-frontmatter', name, f'关键词含空项：{kw}')
+            break
+        if re.match(r'^[-\*\s]', k):
+            add(issues, '1-frontmatter', name,
+                f'关键词「{k}」带 Markdown 列表号——写成了 `[- 词, 词]`，第一个词会变成「- 词」')
+        if re.search(r'\s', k):
+            add(issues, '1-frontmatter', name, f'关键词「{k}」含空格，一个词一项')
+        if k in seen:
+            add(issues, '1-frontmatter', name, f'关键词「{k}」重复')
+        seen.add(k)
+
+
 def _check_card_fields(name, fm, theme_words):
     """字段完整性、三字段一致、受控词与枚举——一张卡的 frontmatter 判据。"""
     for f in REQUIRED_FIELDS:
@@ -132,6 +169,7 @@ def check_cards(theme_words):
 
         _check_card_fields(name, fm, theme_words)
         _check_tags(name, fm, text)
+        _check_keywords(name, fm, text)
 
     return cards
 

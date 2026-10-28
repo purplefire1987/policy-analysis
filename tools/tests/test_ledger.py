@@ -30,12 +30,13 @@ from pkb.actions import ledger as A            # noqa: E402
 TODAY = datetime.date(2026, 10, 26)
 
 HEAD = ('# 任务台账\n\n## 二、未闭环项\n\n'
-        '| 编号 | 首次发现 | 问题 | 类型 | 负责环节 | 状态 | 最近更新 | 关闭依据 |\n'
-        '|---|---|---|---|---|---|---|---|\n')
+        '| 编号 | 首次发现 | 问题 | 类型 | 负责环节 | 解法 | 状态 | 最近更新 | 关闭依据与下一步 |\n'
+        '|---|---|---|---|---|---|---|---|---|---|\n')
 
 
-def row(tid, status='🆕 待办'):
-    return f'| {tid} | 2026-10-26 | 某问题 | 结构 | 采集 | {status} | 2026-10-26 | 待办 |'
+def row(tid, status='🆕 待办', solve='机器'):
+    return (f'| {tid} | 2026-10-26 | 某问题 | 结构 | 采集 | {solve} | {status} '
+            f'| 2026-10-26 | 待办 |')
 
 
 def judge(text):
@@ -99,17 +100,17 @@ if __name__ == '__main__':
 def ledger_text(rows, arch=None):
     """一份最小台账：只有「未闭环项」与「关闭记录」两节，够判生命周期。"""
     head = ('# 任务台账\n\n## 二、未闭环项\n\n'
-            '| 编号 | 首次发现 | 问题 | 类型 | 负责环节 | 状态 | 最近更新 | 关闭依据 |\n'
-            '|---|---|---|---|---|---|---|---|\n')
+            '| 编号 | 首次发现 | 问题 | 类型 | 负责环节 | 解法 | 状态 | 最近更新 | 关闭依据与下一步 |\n'
+            '|---|---|---|---|---|---|---|---|---|\n')
     tail = ('\n\n## 六、关闭记录（归档）\n\n'
             '| 编号 | 首次发现 | 关闭日 | 问题（摘要） | 关闭依据 |\n|---|---|---|---|---|\n'
             + (arch or '| — | — | — | — | — |') + '\n')
     return head + '\n'.join(rows) + tail
 
 
-def trow(tid, status, days, note='依据。'):
+def trow(tid, status, days, note='依据。', solve='机器'):
     d = (TODAY - datetime.timedelta(days=days)).isoformat()
-    return f'| {tid} | 2026-09-01 | 某问题 | 结构 | 采集 | {status} | {d} | {note} |'
+    return (f'| {tid} | 2026-09-01 | 某问题 | 结构 | 采集 | {solve} | {status} | {d} | {note} |')
 
 
 class Test生命周期判定(unittest.TestCase):
@@ -211,7 +212,7 @@ class Test取值合规(unittest.TestCase):
         self.assertTrue(any('取值合规' in o for o in oks), oks)
 
     def test_类型写错要报出行号与取值表(self):
-        bad = '| T-2 | 2026-09-01 | 某问题 | 结构问题 | 采集 | 🆕 待办 | 2026-10-26 | 依据。 |'
+        bad = '| T-2 | 2026-09-01 | 某问题 | 结构问题 | 采集 | 机器 | 🆕 待办 | 2026-10-26 | 依据。 |'
         errs, _o = values(ledger_text([bad]))
         self.assertEqual(len(errs), 1, errs)
         self.assertIn('类型', errs[0])
@@ -219,14 +220,14 @@ class Test取值合规(unittest.TestCase):
         self.assertIn('第 7 行', errs[0])
 
     def test_负责环节写错要说明后果(self):
-        bad = '| T-3 | 2026-09-01 | 某问题 | 结构 | 采集入库 | 🆕 待办 | 2026-10-26 | 依据。 |'
+        bad = '| T-3 | 2026-09-01 | 某问题 | 结构 | 采集入库 | 机器 | 🆕 待办 | 2026-10-26 | 依据。 |'
         errs, _o = values(ledger_text([bad]))
         self.assertEqual(len(errs), 1, errs)
         self.assertIn('负责环节', errs[0])
         self.assertIn('不再被读', errs[0])
 
     def test_两列都错各报一条(self):
-        bad = '| T-4 | 2026-09-01 | 某问题 | 结构错 | 采集入库 | 🆕 待办 | 2026-10-26 | 依据。 |'
+        bad = '| T-4 | 2026-09-01 | 某问题 | 结构错 | 采集入库 | 机器 | 🆕 待办 | 2026-10-26 | 依据。 |'
         errs, _o = values(ledger_text([bad]))
         self.assertEqual(len(errs), 2, errs)
 
@@ -324,3 +325,43 @@ class Test释放留痕(unittest.TestCase):
         _e, warns, _o = release(rep, task_text(self.Q))
         self.assertTrue(any('读不到' in w for w in warns), warns)
 
+
+
+class Test解法列(unittest.TestCase):
+    """「解法」只有机器／用户两个值（2026-10-28 增）。
+
+    为什么测：写错的形态不是报错，而是**被当成机器的事**——等着用户拍板的行
+    从此埋在采集清单里，看着像「没做完」，实际上一直在等人。
+    """
+
+    def test_解法写错要报(self):
+        bad = ('| T-5 | 2026-09-01 | 某问题 | 结构 | 采集 | 待定 | 🆕 待办 '
+               '| 2026-10-26 | 依据。 |')
+        errs, _o = values(ledger_text([bad]))
+        self.assertEqual(len(errs), 1, errs)
+        self.assertIn('解法', errs[0])
+        self.assertIn('机器／用户', errs[0])
+
+    def test_用户是合法值(self):
+        errs, _o = values(ledger_text([trow('T-6', '🆕 待办', 1, solve='用户')]))
+        self.assertEqual(errs, [])
+
+
+class Test表头契约(unittest.TestCase):
+    """表头必须与 `domain/ledger.LEDGER_COLS` 逐字一致。
+
+    列序是三个模块（plan、checks、run.py ledger）的下标契约。表头改了代码没跟上，
+    读出来的就是相邻列——不报错，只是读错。所以表头本身也得被校验。
+    """
+
+    def test_表头少一列要报(self):
+        text = ('# 任务台账\n\n## 二、未闭环项\n\n'
+                '| 编号 | 首次发现 | 问题 | 类型 | 负责环节 | 状态 | 最近更新 | 关闭依据 |\n'
+                '|---|---|---|---|---|---|---|---|\n'
+                '| T-1 | 2026-10-26 | 某问题 | 结构 | 采集 | 🆕 待办 | 2026-10-26 | 待办 |\n')
+        errs, _w = judge(text)
+        self.assertTrue(any('表头' in e for e in errs), errs)
+
+    def test_表头与常量一致不报(self):
+        errs, _w = judge(HEAD + row('T-20261028-09') + '\n')
+        self.assertEqual(errs, [])

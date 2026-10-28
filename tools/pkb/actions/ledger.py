@@ -28,6 +28,7 @@ from pkb.core import LEDGER, read, write, banner
 from pkb.checks.docs.ledger import triage       # 判定与执行共用一份，actions→checks 是下行
 
 from pkb.domain import ARCHIVE_DAYS
+from pkb.domain.ledger import col                # 列名→下标，不写裸下标（见 domain/ledger 说明）
 
 TITLES = {'archive': '该归档', 'stale': '该退回 🆕',
           'overdue': '待验过期', 'observe': '观察窗口已到'}
@@ -51,7 +52,8 @@ def _archive(lines, rows, limit):
     tbl = [i for i in range(*b6) if lines[i].lstrip().startswith('|')]
     if not tbl:
         return 0
-    new = [f'| {c[0]} | {c[1]} | {c[6]} | {c[2]} | {c[7]} |' for _i, c, _w in rows]
+    new = [f'| {c[col("编号")]} | {c[col("首次发现")]} | {c[col("最近更新")]} '
+           f'| {c[col("问题")]} | {c[col("关闭依据与下一步")]} |' for _i, c, _w in rows]
     ph = next((i for i in tbl if '—' in lines[i]), None)
     if ph is not None:
         lines[ph:ph + 1] = new
@@ -86,7 +88,7 @@ def _print(plan, limit):
         head = f'【{n}·{title}' + (f'（≥{limit} 天）】' if key == 'archive' else '】')
         print(f'\n{head}{len(plan[key])} 条')
         for _i, c, why in plan[key]:
-            print(f'  {c[0]}｜{why}｜{c[5]}')
+            print(f'  {c[0]}｜{why}｜{c[col("状态")]}｜{c[col("解法")]}')
     return total
 
 
@@ -121,8 +123,9 @@ def run(argv=None):
     back = 0
     for i, c, why in plan['stale']:
         c = list(c)
-        c[5] = '🆕 待办'
-        c[7] = f'{c[7]}（{datetime.date.today()} 退回 🆕：{why}）'
+        c[col('状态')] = '🆕 待办'
+        k = col('关闭依据与下一步')
+        c[k] = f'{c[k]}（{datetime.date.today()} 退回 🆕：{why}）'
         lines[i] = '| ' + ' | '.join(c) + ' |'
         back += 1
     write(LEDGER, '\n'.join(lines))

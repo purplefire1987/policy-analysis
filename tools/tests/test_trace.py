@@ -119,3 +119,74 @@ class TestTrace(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+OTHER_CARD = """---
+类型: 产业卡
+名称: 文旅体育
+---
+
+## 政策列表
+
+### 2026-09-20 · 关于营地与房车旅游融合的通知
+
+- **与旧政策的关系**：承接国办函〔2026〕82号 的营地建设要求。
+
+### 2026-09-13 · 同一天的另一份文件
+
+- 要点：与本条无关。
+"""
+
+
+class Test旁证不许认错(unittest.TestCase):
+    """两类假阳性比「查不到」更坏，因为它们让人以为已经核过了。
+
+    ① 存档按「政策日期相同」认领：存档文件名是 `日期_机关_文号_标题`，同一天可能有
+       十几份文件。早先写成「文号命中或日期相同」，取证时把同一天一份无关的中小企业
+       通知算成了另一条政策的原文——**认错一份存档比查不到更坏**。
+    ② 同卡内互相提到被算成「别的卡提到它」：那是卡内就近可读的关系，报出来只会让人
+       以为跨卡这条链已经通了。
+    """
+
+    def setUp(self):
+        trace._text.cache_clear()
+        self.tmp = tempfile.TemporaryDirectory()
+        root = Path(self.tmp.name)
+        for name in ('card', 'chain', 'signal', 'article'):
+            (root / name).mkdir()
+        (root / 'card' / '政策卡片-消费与商贸.md').write_text(CARD, encoding='utf-8')
+        (root / 'card' / '政策卡片-文旅体育.md').write_text(OTHER_CARD, encoding='utf-8')
+        (root / 'chain' / '政策链-促消费.md').write_text(CHAIN, encoding='utf-8')
+        (root / 'signal' / '政策信号-改善民生.md').write_text(SIGNAL, encoding='utf-8')
+        (root / 'article' / '2026-09-13_工信部办公厅_中小企业培育通知.md').write_text(
+            '---\n类型: 一手存档\n政策日期: 2026-09-13\n文号: 工信厅企〔2026〕7号\n---\n\n正文。\n',
+            encoding='utf-8')
+        self._old = (trace.CARD_DIR, trace.CHAIN_DIR, trace.SIGNAL_DIR, trace.ARTICLE_DIR)
+        trace.CARD_DIR, trace.CHAIN_DIR = root / 'card', root / 'chain'
+        trace.SIGNAL_DIR, trace.ARTICLE_DIR = root / 'signal', root / 'article'
+
+    def tearDown(self):
+        (trace.CARD_DIR, trace.CHAIN_DIR, trace.SIGNAL_DIR, trace.ARTICLE_DIR) = self._old
+        trace._text.cache_clear()
+        self.tmp.cleanup()
+
+    def test_同日但题名不符的存档不算原文(self):
+        sec = trace.policies('促进房车消费')[0]
+        hit, same_day = trace.archives_of(sec)
+        self.assertEqual(hit, [], '文号/题名都对不上，不能因为同一天就认领')
+        self.assertEqual(len(same_day), 1)
+
+    def test_跨卡提及按文号连出来(self):
+        sec = trace.policies('促进房车消费')[0]
+        refs = trace.mentioned_by(sec)
+        self.assertEqual([r['card'] for r in refs], ['文旅体育'])
+
+    def test_同卡内的提及不算跨卡(self):
+        p = trace.CARD_DIR / '政策卡片-消费与商贸.md'
+        p.write_text(CARD + '\n### 2026-09-25 · 同卡内引用别节\n\n- 参见国办函〔2026〕99号。\n'
+                     + '\n### 2026-09-26 · 被同卡引用的那条\n\n- 文号 国办函〔2026〕99号。\n',
+                     encoding='utf-8')
+        trace._text.cache_clear()
+        sec = trace.policies('被同卡引用的那条')[0]
+        self.assertEqual(trace.mentioned_by(sec), [],
+                         '同卡内的小节互相提到不算「卡之间」，那层关系在卡内就近可读')

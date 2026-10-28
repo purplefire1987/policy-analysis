@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""一条政策的全链：政策 → 卡 → 链 → 信号 → 一手存档。
+"""一条政策的全链：政策 → 卡 → 链 → 信号 → 一手存档 → 别的卡提到它。
 
 为什么再加一个检索动作
 ------------------
 `query` 能回答「这个词出现在哪些行」，回答不了「这条政策在库里挂在哪」。
 后一个问题要跨三种文件：卡（内容）、链（目录）、信号与存档（旁证）。
 它们的关系全躺在 frontmatter 与「关联卡片」节里，此前只能人工三处翻。
+
+**「别的卡提到它」是反查出来的，不是人写的链接**：库里一处卡间 `[[政策卡片-X]]`
+都没有（卡内 39 处链接全部指向政策链），说明这层关系从来没打算用链接表达。
+所以按**文号**在别的卡正文里找——文号唯一，出现即指认；题名不行，
+正文里常被简称成「《指导意见》」「该文件」。同卡内的小节提到不算，
+那层关系在卡内就近可读。手写链接的方案没有采纳，理由写在 `mentioned_by` 里。
 
 **只连关系，不写结论**：命中的原话照旧不摘、不评。它给的是「去哪几处读」，
 不是「这件事怎么看」——后者归周观点与分析。
@@ -22,6 +28,7 @@
 import argparse
 import difflib
 import re
+from functools import lru_cache
 
 from pkb.core import (ARTICLE_DIR, CARD_DIR, CHAIN_DIR, SIGNAL_DIR,
                       md_section_lines, read, scan_dated, summary)
@@ -29,6 +36,13 @@ from pkb.core import (ARTICLE_DIR, CARD_DIR, CHAIN_DIR, SIGNAL_DIR,
 DOC_NO = re.compile(r'〔\d{4}〕\s*\d+\s*号')
 PAREN = re.compile(r'[（(].*?[）)]')
 PUNCT = re.compile(r'[《》〈〉「」“”"\'\-—－、，,。．\.：:；;（）()〔〕【】\s]')
+
+
+@lru_cache(maxsize=None)
+def _text(path):
+    """按文件缓存正文。一张卡里几十个小节，不缓存就是同一个文件读几十遍——
+    跨卡反查是 157 × 157 的两层循环，第一次跑直接把进程拖死过。"""
+    return read(path, '')
 
 
 def norm(s):
@@ -89,12 +103,53 @@ def signals_of(title):
 
 
 def archives_of(sec):
-    """一手存档：文号相同、或政策日期相同的那些文件。只报文件名，不报内容。"""
-    ks, out = keys(sec['title']), []
+    """一手存档：**按文号或题名认**，不按日期认。
+
+    为什么日期不能当判据：存档文件名是 `日期_机关_文号_标题`，同一天可能有十几份文件。
+    早先写成「文号命中 **或** 政策日期相同」，取证结果是把同一天一份无关的中小企业
+    通知算成了这条政策的原文——**认错一份存档比查不到更坏**，因为它会让人以为
+    物证已经落了盘。同日的其余存档单列成「同期另有」，只说存在，不替你认。
+    """
+    ks, out, same_day = keys(sec['title']), [], []
     for p in sorted(ARTICLE_DIR.glob('*.md')):
-        head = read(p, '')[:600]
-        if like(ks, head) or f'政策日期: {sec["date"]}' in head:
+        head = _text(p)[:600]
+        if like(ks, head):
             out.append(p.name)
+        elif f'政策日期: {sec["date"]}' in head:
+            same_day.append(p.name)
+    return out, same_day
+
+
+def _body(sec):
+    lines = _text(CARD_DIR / sec['file']).split('\n')
+    return '\n'.join(lines[sec['start'] - 1:sec['end']])
+
+
+def mentioned_by(sec):
+    """别的卡里提到这条政策的地方：**按文号反查，不靠人写链接**。
+
+    为什么是这条路而不是在卡片正文里手写 `[[政策卡片-X]]`：
+      ① 库里现在一处这样的链接都没有（39 处卡内链接全部指向政策链），
+         说明「卡与卡的关系」从来没打算用链接表达，加它是新增一份关系账；
+      ② 关系其实已经写在正文里了——「与旧政策的关系」那一栏点名了它承继、
+         修订、替代了谁；缺的不是记录，是**能按它反查**；
+      ③ 手写链接没人核：链页、信号「关联政策」已经各自记了一遍关系，
+         再加一份，第三次漂移照样没人发现。
+
+    按文号而不按题名：正文里题名常被简称（「《指导意见》」「该文件」），
+    按题名会漏一半、错一半；文号唯一，出现即指认。
+    """
+    text = sec['title'] + '\n' + _body(sec)
+    nos = {norm(m.group(0)) for m in DOC_NO.finditer(text)}
+    if not nos:
+        return []
+    out = []
+    for other in scan_dated(CARD_DIR):
+        if other['file'] == sec['file']:
+            continue                      # 同一张卡内不算「卡之间」，那层关系在卡内就近可读
+        card = re.sub(r'^政策卡片-|\.md$', '', other['file'])
+        if like(nos, _body(other)):
+            out.append({**other, 'card': card})
     return out
 
 
@@ -108,9 +163,21 @@ def _show(sec, out):
     out.append(f'  信号：{len(sigs)} 条' if sigs else '  信号：0 条（这条政策还没有相关表态）')
     for s in sigs[:5]:
         out.append(f'    {s["date"]} · {s["title"]}　{s["file"]}:{s["start"]}-{s["end"]}')
-    arcs = archives_of(sec)
+    arcs, same_day = archives_of(sec)
     out.append(f'  一手存档：{len(arcs)} 份' if arcs else '  一手存档：0 份（原文未落盘）')
     out += [f'    raw/articles/{a}' for a in arcs[:5]]
+    if not arcs and same_day:
+        out.append(f'    同日另有 {len(same_day)} 份存档，对不上这条（不替你认）：'
+                   f'{same_day[0][:44]}')
+    refs = mentioned_by(sec)
+    if refs:
+        out.append(f'  别的卡提到它：{len(refs)} 处（按文号反查，不是人写的链接）')
+        out += [f'    {r["card"]} · {r["date"]} {r["title"][:36]}'
+                f'　{r["file"]}:{r["start"]}' for r in refs[:4]]
+    elif not DOC_NO.search(sec['title'] + _body(sec)):
+        out.append('  别的卡提到它：查不了（这条政策正文里没有文号）')
+    else:
+        out.append('  别的卡提到它：0 处（文号在别的卡里没有出现）')
     out.append('')
 
 
@@ -139,6 +206,12 @@ def run(argv=None):
         return 0
 
     out.append(f'══ 政策全链：「{keyword or args.card}」命中 {len(hit)} 条 ══\n')
+    if args.card:
+        from pkb.core.fm import parse_fm
+        fm, _b = parse_fm(_text(CARD_DIR / f'政策卡片-{args.card}.md'))
+        kws = fm.get('关键词')
+        if isinstance(kws, list) and kws:
+            out.append(f'这张卡的关键词：{"、".join(str(k) for k in kws)}\n')
     for sec in hit[:3]:
         _show(sec, out)
     if len(hit) > 3:

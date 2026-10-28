@@ -72,3 +72,40 @@ class Test断链过滤(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class Test关键词(unittest.TestCase):
+    """关键词是「只写不读」的典型：在必填表里，没有任何代码看它的值。
+
+    实际盘点 33 张卡：18 行内数组、11 块式、4 张行内数组里混着 Markdown 列表号。
+    三种写法一种脏值，而校验一条都没有——所以判据只认形态，不判选得准不准
+    （选词是判断，脚本判了就是逼人凑数）。
+    """
+
+    def _kw(self, doc):
+        fm, _b = S.parse_fm(doc)
+        S.issues.clear()
+        S.warns.clear()
+        S._check_keywords('测试卡', fm, doc)
+        return list(S.issues['1-frontmatter']), list(S.warns['1-frontmatter'])
+
+    def test_行内数组不报(self):
+        errs, warns = self._kw('---\n关键词: [甲, 乙, 丙]\n---\n')
+        self.assertEqual((errs, warns), ([], []))
+
+    def test_混进列表号的要报(self):
+        errs, _w = self._kw('---\n关键词: [- 文化遗产, 旅游强国, 文旅融合]\n---\n')
+        self.assertTrue(any('Markdown 列表号' in m for _o, m in errs), errs)
+
+    def test_块式写法要报(self):
+        errs, _w = self._kw('---\n关键词:\n  - 甲\n  - 乙\n  - 丙\n---\n')
+        self.assertTrue(any('块式' in m for _o, m in errs), errs)
+
+    def test_重复要报(self):
+        errs, _w = self._kw('---\n关键词: [甲, 甲, 乙]\n---\n')
+        self.assertTrue(any('重复' in m for _o, m in errs), errs)
+
+    def test_太少只提示不阻断(self):
+        errs, warns = self._kw('---\n关键词: [甲, 乙]\n---\n')
+        self.assertEqual(errs, [])
+        self.assertTrue(any('3 个' in m or '只有' in m for _o, m in warns), warns)

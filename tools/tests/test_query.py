@@ -137,3 +137,25 @@ class TestQuery(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class Test关键词兜底(unittest.TestCase):
+    """`query` 是关键词字段的第一个消费端：读者用的词常与政策用的词不一样。
+
+    查「旅居车」不命中，因为库里写「房车」——卡片关键词正是存这种别名的地方。
+    纯函数，不碰文件，所以直接把映射传进去。
+    """
+
+    MAP = {'房车与旅居': ['旅居车', '房车'], '养老': ['银发经济', '养老服务']}
+
+    def test_别名命中(self):
+        got = query.kw_cards('旅居车', self.MAP)
+        self.assertEqual([c for c, _k in got], ['房车与旅居'])
+
+    def test_上位词包含即命中(self):
+        got = query.kw_cards('银发', self.MAP)
+        self.assertIn('养老', [c for c, _k in got])
+
+    def test_单字不猜(self):
+        self.assertEqual(query.kw_cards('车', self.MAP), [],
+                         '一个字几乎人人命中，宁可不给')

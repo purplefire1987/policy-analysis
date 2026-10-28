@@ -32,11 +32,10 @@ import argparse
 import datetime
 import re
 import shutil
-import tempfile
 import time
 from pathlib import Path
 
-from pkb.core import ARTICLE_DIR, CARD_DIR, read, web, doc
+from pkb.core import ARTICLE_DIR, CACHE_DIR, CARD_DIR, read, web, doc
 from pkb.domain import sources
 
 ORIGIN = sources.LEVELS[0]      # 只有「原文」落盘；三级取值仍从 domain 取，不写裸字符串
@@ -242,7 +241,9 @@ def attempt_doc(e, args, stats, tmpdir):
         why = f'HTTP {code}' if code else '无响应（超时或域名解析失败）'
         return 'fail', f'取回失败：{why}'
     ext = Path(e['url'].split('?')[0]).suffix.lower()
-    tmp = Path(tempfile.mkdtemp(dir=tmpdir, prefix='body-')) / ('x' + ext)
+    # 不再 mkdtemp：`tempfile` 要「建了能删」的目录，沙箱把 unlink 全局 deny（见 run() 里那段），
+    # 于是 mkdtemp 连目录都建不出来。落点本来就该在这里——用完即弃的是文件名，不是目录。
+    tmp = Path(tmpdir) / ('body' + ext)
     tmp.write_bytes(raw)
     text = doc.to_text(tmp)
     if not text or not text.strip():
@@ -299,7 +300,6 @@ def attempt(e, idx, args, stats, tmpdir):
 
 def keep_page(e, raw):
     """`--keep`：原页留在 .cache/fetch/，抽取抽歪了有得查。不是库内容，不进 git。"""
-    from pkb.core import CACHE_DIR
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     (CACHE_DIR / (fname(e)[:-3] + '.html')).write_bytes(raw)
 
@@ -340,7 +340,18 @@ def run(argv=None):
     entries = collect(args['start'], args['end'])
     stats = {'new': 0, 'skip': 0, 'nofirst': 0, 'fail': 0, 'chars': 0,
              'seen': stored_urls()}
-    tmpdir = tempfile.mkdtemp(prefix='pkb-fetch-') if not args['dry'] else None
+    # 工作目录固定落在 .cache/fetch/work/ 下，**不用 tempfile**（2026-10-28）：
+    # 沙箱 profile 末尾追加 `(deny file-write-unlink (subpath "/"))`，而它排在所有
+    # `(allow file-write-unlink (subpath ...))` 之后、按「后匹配覆盖先匹配」生效，
+    # 结果沙箱内任何删除都失败。`tempfile` 挑目录靠的正是「建一个、删掉、算可用」，
+    # 于是每个候选目录都判不可用，`gettempdir()` 抛 FileNotFoundError，采集在这里就死了。
+    # 顺带：每次 Python 启动都在四个候选目录各留一个 8 字符随机名空文件——
+    # 那批无扩展名垃圾就是这么来的。
+    # 不用 `mkdtemp(dir=...)` 也不行：它仍要先调 gettempdir()。索性整条不依赖 tempfile。
+    tmpdir = None
+    if not args['dry']:
+        tmpdir = CACHE_DIR / 'work' / datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
+        tmpdir.mkdir(parents=True, exist_ok=True)
     print(f'\n【fetch】窗口 {args["start"]} ~ {args["end"]}，卡片内 {len(entries)} 条')
     try:
         for i, e in enumerate(entries, 1):
@@ -351,6 +362,8 @@ def run(argv=None):
             if tag in ('new', 'dry'):
                 time.sleep(THROTTLE)
     finally:
+        # 正常环境清干净；沙箱里删不掉会静默留下（那正是上面那段注释讲的事），
+        # 所以退而求其次：目录名带时间戳，下次不会撞上，也不怕留。
         if tmpdir:
             shutil.rmtree(tmpdir, ignore_errors=True)
     if args['dry']:

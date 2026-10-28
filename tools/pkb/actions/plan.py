@@ -30,6 +30,7 @@ from pkb.core import (CARD_DIR, SIGNAL_DIR, COLLECT_LOG, LEDGER,
                  read as lib_read, md_section_lines, table_rows, parse_date,
                  span, iso_week)
 from pkb.domain import STANCES, STANCE_MIN
+from pkb.domain.ledger import LEDGER_COLS, col    # 列名→下标，不写裸下标
 # 路径与通用件唯一定义处：pkb/core/paths.py
 # 命名注意：lib 里 LEDGER=任务台账、COLLECT_LOG=采集日志；本文件沿用旧名 LEDGER=采集日志
 TASKS = LEDGER                 # 任务台账.md
@@ -311,19 +312,26 @@ def _stock(sig):
 
 
 def _todo():
-    """④ 任务台账待办：只取「负责环节＝采集」且未闭环的。"""
-    out = []
+    """④ 任务台账待办：只取「负责环节＝采集」且未闭环的，按解法分成两堆。
+
+    「解法＝用户」的不进采集清单——它等的是人拍板，派给采集只会让它一直躺在待办里，
+    看起来像「没做完」。这类单列一段交给读者，与「机器自己能做」分开摆。
+    """
+    out, mine = [], []
     for r in table_rows(section(read(TASKS), '未闭环项')):
-        if len(r) < 6:
+        if len(r) < len(LEDGER_COLS):
             continue
-        status = r[5] if len(r) > 5 else ''
+        status = r[col('状态')]
         if any(k in status for k in ('✅', '🚫')):
             continue
-        if '采集' not in r[4]:
-            continue
-        out.append({'id': r[0], 'found': r[1], 'issue': r[2],
-                    'type': r[3], 'status': status})
-    return out
+        item = {'id': r[col('编号')], 'found': r[col('首次发现')],
+                'issue': r[col('问题')], 'type': r[col('类型')],
+                'status': status, 'solve': r[col('解法')]}
+        if r[col('解法')] == '用户':
+            mine.append(item)
+        elif '采集' in r[col('负责环节')]:
+            out.append(item)
+    return out, mine
 
 
 def plan(round_no=None, top=8):
@@ -332,6 +340,7 @@ def plan(round_no=None, top=8):
     sig = scan_signals()
     gap, batch, cursor = _gap()
     queue, claimed, stale = _stock(sig)
+    todo, mine = _todo()
 
     return {
         'today': TODAY.isoformat(), 'week': iso_week(TODAY), 'round': round_no,
@@ -339,7 +348,7 @@ def plan(round_no=None, top=8):
         'views': _views(cards),
         'gap': gap, 'batch': batch, 'cursor': cursor,
         'stock': queue, 'claim': claimed, 'stale': stale,
-        'todo': _todo(),
+        'todo': todo, 'mine': mine,
         'top': top,
     }
 
@@ -364,6 +373,11 @@ def pr_todo(p):
     print('【1·台账待办（负责环节＝采集）】' + ('无' if not p['todo'] else f'{len(p["todo"])} 项'))
     for t in p['todo']:
         print(f'  {t["id"]}｜{re.sub(r"[*`]", "", t["issue"])[:44]}｜{t["status"]}')
+    if p['mine']:
+        print(f'\n【1b·等你拍板（解法＝用户，共 {len(p["mine"])} 项）】'
+              f'这些机器做不了，也不该由自动化代签')
+        for t in p['mine']:
+            print(f'  {t["id"]}｜{re.sub(r"[*`]", "", t["issue"])[:52]}｜{t["status"]}')
 
 
 def pr_gap(p):
