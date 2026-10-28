@@ -16,11 +16,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from pkb.checks.docs import _state as S            # noqa: E402
 from pkb.checks.docs import consistency as C      # noqa: E402
-from pkb.core import AGENTS                       # noqa: E402
+from pkb.checks.docs import declared as D         # noqa: E402
+from pkb.checks.docs import hygiene as H          # noqa: E402
+from pkb.core import TEMPLATE_DIR                 # noqa: E402
 from pkb.domain import (BLACK, BAD_SUBJECT, is_bad, DOMAINS, STAT_DOMAINS,  # noqa: E402
                         IMPACTS, STATUSES, REQUIRED_FIELDS, FIELD_MAP, LEGACY_WEEKS,
                         IMPACT_SINCE, ANALYSIS_TYPES, ANALYSIS_SPINE,
                         ANALYSIS_WORD_LIMIT, STANCES, STANCE_MIN)
+
+CARD_TEMPLATE = TEMPLATE_DIR / '政策卡片模板.md'
 
 
 class TestBlacklist(unittest.TestCase):
@@ -243,15 +247,72 @@ class Test结构数字扫全文档(unittest.TestCase):
         self.assertTrue(any('判据失效' in e for e in errs), errs)
 
 
-class Test立场类别同步(unittest.TestCase):
-    """「至少覆盖 3 类主体（官方／市场／产业／学术／国际／舆论）」这条口径写在 AGENTS
-    七要素表里，`plan` 的检索提示直接引用它。**名字从文档现读、不在代码里存第二份**
-    ——它会加长，两份不同步时谁都不报错。"""
+class Test时刻与log类型(unittest.TestCase):
+    """两条 2026-10-29 新增的判据：四个任务的时刻、log 类型白名单。
 
-    def test_与AGENTS七要素同集合(self):
-        text = AGENTS.read_text(encoding='utf-8')
-        m = re.search(r'至少覆盖 (\d+) 类主体\*\*（(.+?)）', text)
-        self.assertTrue(m, 'AGENTS 里找不到「至少覆盖 N 类主体（…）」——判据失效，须同步本测试')
+    它们存在的理由相同——把「同一件事写两处」收成一处之后，剩下那一份必须有人看着，
+    否则「收口」只是把两份副本改成一份无人校验的抄件。
+    """
+
+    def _run(self, fn, docs):
+        S.rep.errors.clear()
+        S.rep.warns.clear()
+        S.rep.oks.clear()
+        fn(docs)
+        return [m for _i, m in S.rep.errors], list(S.rep.oks)
+
+    def test_时刻分家要报(self):
+        ag = '## 一、产出物与频率\n\n| 产出物 | 频率 | 落点 | 生产者 |\n|---|---|---|---|\n' \
+             '| 产业卡 | 每日 **09:00** | a | 采集自动化 |\n'
+        st = '## 一、当前状态\n\n| 任务 | 自动化 | 节拍 | 最近运行 |\n|---|---|---|---|\n' \
+             '| 采集 | d1ca26c1 | 每日 09:30 | 2026-10-28 09:00 |\n'
+        errs, _o = self._run(D.check_times, {'AGENTS': ag, '运行状态': st})
+        self.assertTrue(any('09:30' in e for e in errs), errs)
+        self.assertTrue(any('09:00' in e for e in errs), errs)
+
+    def test_时刻一致不报(self):
+        ag = '## 一、产出物与频率\n\n| 产出物 | 频率 | 落点 | 生产者 |\n|---|---|---|---|\n' \
+             '| 体检报告 | 每 2 天 **22:00** | a | 体检自动化 |\n'
+        st = '## 一、当前状态\n\n| 任务 | 自动化 | 节拍 | 最近运行 |\n|---|---|---|---|\n' \
+             '| 体检 | 96885a01 | **每 2 天 22:00** | 2026-10-28 22:05 |\n'
+        errs, oks = self._run(D.check_times, {'AGENTS': ag, '运行状态': st})
+        self.assertFalse(errs, errs)
+        self.assertTrue(any('时刻一致' in o for o in oks), oks)
+
+    def test_只取节拍列不取最近运行(self):
+        """最近运行那一栏写着 22:05，不该被当成节拍——否则每次运行都报分家。"""
+        ag = '## 一、产出物与频率\n\n| 产出物 | 频率 | 落点 | 生产者 |\n|---|---|---|---|\n' \
+             '| 体检报告 | 每 2 天 **22:00** | a | 体检自动化 |\n'
+        st = '## 一、当前状态\n\n| 任务 | 自动化 | 节拍 | 最近运行 |\n|---|---|---|---|\n' \
+             '| 体检 | 96885a01 | 每 2 天 22:00 | 2026-10-28 22:05 |\n'
+        errs, _o = self._run(D.check_times, {'AGENTS': ag, '运行状态': st})
+        self.assertFalse(errs, errs)
+
+    def test_log类型写错要报(self):
+        errs, _o = self._run(H.check_types_declared,
+                             {'AGENTS': '类型限 `决策／采集／体检／观点` 四种'})
+        self.assertTrue(any('事故' in e or '同步' in e for e in errs), errs)
+
+    def test_log类型对得上不报(self):
+        errs, oks = self._run(H.check_types_declared,
+                              {'AGENTS': '类型限 `决策／采集／体检／观点／事故` 五种'})
+        self.assertFalse(errs, errs)
+        self.assertTrue(any('log 类型' in o for o in oks), oks)
+
+    def test_找不到那串要报判据失效(self):
+        errs, _o = self._run(H.check_types_declared, {'AGENTS': '没有那句话\n'})
+        self.assertTrue(any('判据' in e or '类型' in e for e in errs), errs)
+
+
+class Test立场类别同步(unittest.TestCase):
+    """「至少覆盖 3 类主体（官方解读／市场主体／产业方／学术界／国际视角／舆论）」这条口径
+    2026-10-29 起只写在 `templates/政策卡片模板.md`（AGENTS 第六节的七要素表已删，
+    改为指向模板）。**名字从模板现读、不在代码里存第二份**——它会加长，两份不同步时谁都不报错。"""
+
+    def test_与卡片模板同集合(self):
+        text = CARD_TEMPLATE.read_text(encoding='utf-8')
+        m = re.search(r'至少覆盖 (\d+) 类主体\*{0,2}（(.+?)）', text)
+        self.assertTrue(m, '模板里找不到「至少覆盖 N 类主体（…）」——判据失效，须同步本测试')
         self.assertEqual(int(m.group(1)), STANCE_MIN)
         self.assertEqual(set(m.group(2).split('／')), set(STANCES))
 

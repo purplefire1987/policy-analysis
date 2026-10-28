@@ -7,9 +7,9 @@
 """
 import re
 
-from pkb.core import (VAULT, CARD_DIR, CHAIN_DIR, WEEK_TEMPLATE,
+from pkb.core import (VAULT, CARD_DIR, CHAIN_DIR, TEMPLATE_DIR, WEEK_TEMPLATE,
                       SIGNAL_TEMPLATE, card_files, read as lib_read)
-from pkb.domain import DOC_MUST_MENTION
+from pkb.domain import DOC_MUST_MENTION, FIELD_MAP
 # 黑名单唯一定义处：pkb/domain/blacklist.py
 
 from ._state import err, warn, ok, errors
@@ -170,6 +170,74 @@ def check_no_hardcoded_count(docs):
             hit = True
     if not hit:
         ok('脚本数量：三处均未写死（假设句已排除）')
+
+
+def _section(text, head):
+    """取 `head` 开头那一节（到下一个同级或更高级标题为止）。取不到返回空串。"""
+    lines = text.split('\n')
+    start = next((i for i, l in enumerate(lines) if l.startswith(head)), None)
+    if start is None:
+        return ''
+    level = len(head) - len(head.lstrip('#'))
+    out = []
+    for l in lines[start + 1:]:
+        if re.match(r'^#{1,%d}\s' % level, l):
+            break
+        out.append(l)
+    return '\n'.join(out)
+
+
+def check_template_list(docs):
+    """index 第五节的模板清单 vs `templates/` 实物，**双向**。
+
+    为什么判：清单是手写在 index 里的，实物是目录里的文件，两边谁都看不见谁。
+    加一个模板忘了挂 index，读者就找不到它；index 写着已删的模板，读者会去建一个空文件。
+    """
+    t = docs.get('index', '')
+    if not t:
+        warn('index', '文件不存在，跳过模板清单比对')
+        return
+    listed = set(re.findall(r'\[\[([^\[\]|]+模板)\]\]', _section(t, '## 五、模板')))
+    on_disk = {p.stem for p in TEMPLATE_DIR.glob('*.md')}
+    missing, extra = sorted(on_disk - listed), sorted(listed - on_disk)
+    for n in missing:
+        err('index', f'模板 {n}.md 在 templates/ 里存在，但第五节没列——读者找不到它')
+    for n in extra:
+        err('index', f'第五节列了 [[{n}]]，但 templates/ 里没有这个文件')
+    if not missing and not extra:
+        ok(f'模板清单：index 第五节与 templates/ 一致（{len(on_disk)} 个）')
+
+
+def check_vocab_list(docs):
+    """受控词名单三处对齐：index 第二节的表、磁盘上的卡、`FIELD_MAP` 的键。
+
+    为什么只批名单不批数字：`check_structure_numbers` 早就核「33 个受控词」这个**数**，
+    于是「数对而名字错」一路绿——把「养老」写成「老龄」、或者删掉一个词又加一个词，
+    三处全对不上，谁都不报。名单才是要核的东西，数字只是它的长度。
+    """
+    t = docs.get('index', '')
+    if not t:
+        warn('index', '文件不存在，跳过受控词名单比对')
+        return
+    listed = set()
+    for line in _section(t, '## 二、政策链与受控词').split('\n'):
+        m = re.search(r'\]\]\s*\|\s*([^|]+?)\s*\|', line)
+        if m:
+            listed |= {w.strip() for w in m.group(1).split('、') if w.strip()}
+    disk = {p.stem.split('政策卡片-', 1)[-1] for p in card_files(CARD_DIR)}
+    code = set(FIELD_MAP)
+    bad = False
+    for label, other in (('磁盘上的卡', disk), ('domain/chains.py 的 FIELD_MAP', code)):
+        only_doc = sorted(listed - other)
+        only_other = sorted(other - listed)
+        for w in only_doc:
+            err('index', f'受控词表有「{w}」，但{label}里没有——新增的词没落地，或删卡后没清表')
+            bad = True
+        for w in only_other:
+            err('index', f'{label}有「{w}」，但第二节受控词表没列——受控词表是唯一源，漏一行就查不到')
+            bad = True
+    if not bad:
+        ok(f'受控词名单：index／磁盘／FIELD_MAP 三处一致（{len(listed)} 个词）')
 
 
 def check_expert_refs(docs):

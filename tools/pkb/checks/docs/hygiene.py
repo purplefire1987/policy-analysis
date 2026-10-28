@@ -10,10 +10,10 @@
 import re
 
 from pkb.core import LOG, read
+from pkb.domain.fields import LOG_TYPES        # 口径住 domain，这里只 import（2026-10-29 搬过去）
 
 from ._state import err, warn, ok
 
-LOG_TYPES = {'决策', '采集', '体检', '观点', '事故'}
 LOG_MAX_LINES = 80
 LOG_MAX_BYTES = 200 * 1024
 
@@ -103,3 +103,23 @@ def check_log():
     entries, first_old = _new_entries(lines, heads)
     _judge_new(entries, first_old)
     _check_big_history(lines, heads)
+
+
+def check_types_declared(docs):
+    """AGENTS 写的那串类型，必须等于 domain 的白名单。
+
+    为什么单判一条：格式（`YYYY-MM-DD · 类型 · 一句话`）与类型表 2026-10-29 归口到
+    AGENTS 第十节，`log.md` 页首改成了指针——于是「文档写的五种」与「代码限的五种」
+    之间再没有第三处可以对照，只能在这里对一次。
+    """
+    t = docs.get('AGENTS', '')
+    m = re.search(r'类型限\s*`([^`]+)`', t)
+    if not m:
+        err('AGENTS', '找不到「类型限 …」那串，log 类型无法核对——不静默放过')
+        return
+    declared = {x.strip() for x in re.split(r'[／/、]', m.group(1)) if x.strip()}
+    if declared != set(LOG_TYPES):
+        err('AGENTS', f'log 类型写「{"／".join(sorted(declared))}」，代码是'
+                      f'「{"／".join(sorted(LOG_TYPES))}」——改了白名单要同步这一行')
+    else:
+        ok(f'log 类型：AGENTS 与 domain 一致（{len(LOG_TYPES)} 类）')

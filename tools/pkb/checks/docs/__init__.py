@@ -94,12 +94,15 @@ def run(argv=None):
 
     docs = _load_docs()
     declared.check_interval(docs)
+    declared.check_times(docs)
     declared.check_week_sections(docs)
     declared.check_analysis_sections(docs)
     consistency.check_blacklist(docs)
     literals.check_domain_literals()
     consistency.check_deleted_refs(docs)
     consistency.check_structure_numbers(docs)
+    consistency.check_template_list(docs)
+    consistency.check_vocab_list(docs)
     consistency.check_no_hardcoded_count(docs)
     consistency.check_expert_refs(docs)
     scoring.check_rubric(docs)
@@ -111,6 +114,7 @@ def run(argv=None):
     ledger.check_release_logged()
     expert_pkg.check_expert_scripts()
     hygiene.check_log()
+    hygiene.check_types_declared(docs)
     dnsource.check_sources()
 
     return _conclude(args.quiet)
