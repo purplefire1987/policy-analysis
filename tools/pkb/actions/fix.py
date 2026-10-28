@@ -6,7 +6,9 @@
 1. 结构修复（数值/断链）——会改 frontmatter 的数值；
 2. 快照刷新——必须排在结构修复之后，否则 index 里的统计是修之前的；
 3. 来源清理——只删黑名单链接，平时是 no-op；
-4. 专家包入口归位——scripts 必须是指向 tools 的链接，副本一律还原（放最后，等修复落盘）。
+4. 专家包入口归位——scripts 必须是指向 tools 的链接，副本一律还原；
+5. 临时目录清旧残留——只删过期项，删不掉的只计数（沙箱状态，不是库的问题），
+   放最后：它不修库，只扫地。
 
 **脚本不猜的，一律留给人工**：观点覆盖要联网检索、字段取值涉及判断、跨链归属要人定、
 文档口径冲突（AGENTS／README／专家定义各说一套）改哪份只有人能决定。
@@ -15,6 +17,7 @@ import re
 
 from pkb.checks import REGISTRY
 from pkb.core import banner
+from pkb.core.tmp import sweep
 
 from . import link as link_action
 from . import _snapshot as snapshot, sources as sources_action
@@ -58,6 +61,26 @@ def _step_link(step):
     return 0
 
 
+def _step_tmp(step):
+    """5. 临时目录清旧残留：沙箱拦删留下的测试目录（见 `core/tmp.py::sweep`）。
+
+    放在最后：它不修库，只扫地。`force=True` 跳过平时那条 6 小时间隔——
+    会走到 `fix` 来，说明人已经在收拾东西了，不必再等节流。
+    """
+    removed, failed, freed, done = sweep(force=True)
+    if not removed and not failed:
+        print(f'[{step}] 临时目录清理          无过期残留')
+        return 0
+    size = f'{freed / 1024 / 1024:.1f} MB' if freed >= 102400 else f'{freed} 字节'
+    print(f'[{step}] 临时目录清理          删除 {removed} 项／{size}'
+          + (f'，{failed} 项删不掉' if failed else ''))
+    if not done:
+        print('      还有没扫完的（单次有时间预算），再跑一次 `fix` 接着清。')
+    if failed and not removed:
+        print('      一项都删不掉：多半是沙箱安全锁正拦着删除，过几分钟再试。')
+    return removed
+
+
 def _conclude(changed):
     banner('修复结论')
     print(f'本轮自动修改 {changed} 处。')
@@ -94,4 +117,6 @@ def run(argv=None):
     changed += _step_sources(step)
     step += 1
     changed += _step_link(step)
+    step += 1
+    _step_tmp(step)
     return _conclude(changed)

@@ -29,7 +29,7 @@
 
 **规模基线（2026-10-29 实测）**：`pkb/` 8592 行／62 文件，其中**代码 5069**，其余是 docstring 1742＋空行 1365＋注释 390；371 个函数平均 13.6 行。5 行以上跨文件重复块 **0**、死函数 **0**、pyflakes 0。**结论：不肥但重——体积来自「10 项检查 × 16 个动作」的功能面，压到 3000 只能砍功能**（`T-20261029-02` 待用户三选一）。测试另 4009 行／27 文件。**不要把「行数」当改进指标**：这个库的 docstring 是判据来历，删它等于删掉「为什么」。`tools/tests`（2542 行代码）与 `pkb`（5069）之比 0.5，不算重。
 
-- `core/`：paths（唯一路径定义）／fs（`py_files()`、**`card_files()` 是卡片发现的唯一出口**）／fm／md（`scan_dated`／`scan_notes`）／doc（入库转 TXT）／git（只跑命令不判断）／web／report（`summary` 无默认值）。
+- `core/`：paths（唯一路径定义）／fs（`py_files()`、**`card_files()` 是卡片发现的唯一出口**）／fm／md（`scan_dated`／`scan_notes`）／doc（入库转 TXT）／git（只跑命令不判断）／web／report（`summary` 无默认值）／tmp（钉 `tempfile` 落点＋`sweep()` 清 `.cache/tmp` 旧残留，由 `run.py` 入口与 `fix` 末步调用）。
 - `domain/`：blacklist／fields／chains／legacy／automations／lifecycle／ledger（`LEDGER_COLS`）。**口径只能住这里**；但**目录名与结构名可以进 core**（判据是「与 domain 某取值同值」，不是「出现某个词」）。
 - `checks/`：9 项＋`REGISTRY`（注册表即清单，不按文件名发现）；`run()` 返回 `Result`、不打印、不 `sys.exit`；`docs` 是包，执行顺序即报告顺序。
 - `actions/`：一模块一动作，文件名即动作名，下划线开头是内部件；与 `ACTIONS` 由 `test_smoke` 钉一一对应。**动作清单只在 `run.py list`，不进文档；这里也不写数量**——曾写「13 个」，加到 16 无人回头改。两个检索口：`query`（词／链／时间窗／`--days` 近 N 天，出「文件:行号」）／`trace`（政策→卡→链→信号→存档，`difflib` 给最近三条）。
@@ -89,7 +89,8 @@
 18. **止损不等于治因**：存档正文乱码先加 `looks_binary()` 只拦结果；真因是该站回 gzip 而 `curl` 没带 `--compressed`。**结果不对，往回追一层问从哪步开始不对。**
 19. **沙箱拦截会复发且不报错**：`rm`/`os.rename`/`mv`/`tempfile` 探测全败；**拦的是安全中心「询问」层，不是 seatbelt 规则先后**。变通：`Write`/`Edit` 写盘不受影响；`pytest` 用 `python3 -c "import tempfile; tempfile.tempdir='…'; pytest.main([…,'-p','no:cacheprovider'])"`；工具内已用 `core/tmp.py` 钉到 `.cache/tmp`。**复发先读 `~/.workbuddy/logs/sandbox/<日期>/sandbox_*_000.log` 的 profile 段与 blocked 列表。**
 20. **`git remote add`／`git commit` 可能被拦**（需重写 `.git/config`、`index.lock` 删不掉）。改用手工 Edit 配置文件；提交留给用户或环境恢复后。**`GIT_INDEX_FILE` 备用索引也跳不过**（git 写索引仍是 `.lock` + rename）。沙箱拦删时安全中心会在被操作目录留 8 位随机名、内容 `blat` 的 4 字节探针。**处置已换过一轮**（2026-10-29）：原先写 `.git/info/exclude` 藏，后判定「藏」有害（会静默吞掉同名正当文件、删不掉时它也没用）而撤除；现在是 `check_vcs` 三重判据（名 `^[a-z0-9_]{8}$`＋4 字节＋内容 `blat`，全中才认）报红 + `run.py fix` 自动清。**不加 `.gitignore` 规则**——垃圾看得见比藏起来好，且判据比排除规则先发现「它又来了」。
-21. **测试不该因清理失败而红**：沙箱拦删除时 112 个用例假红，`conftest` 里吞掉 `TemporaryDirectory.cleanup` 异常。
+21. **测试不该因清理失败而红**：沙箱拦删除时 112 个用例假红，`conftest` 里吞掉 `TemporaryDirectory.cleanup` 异常。**代价是残留无声堆积**（一天 3992 个目录 / 42 MB，没有任何读数看得见），已由 `core/tmp.py::sweep()` 在每次运行开头清 24 小时前的条目补上——不另设定时任务，「下次运行」就是定时器；节流 6 小时＋单次 1.5 秒预算（沙箱审查下单个 `rmtree` 要 0.09 秒，3992 个要 6 分钟）。
+22. **删除被拦时，处理完后主动问用户，不要自己绕**（2026-10-29 用户定）：`rm`／`os.remove`／`shutil.rmtree` 失败时先原地再试一次（拦是暂时的，常几分钟自解），仍失败**不换路径绕、不写排除规则藏**。做法是把「要删什么、为什么删、失败原文」列清楚，在当轮回复末尾直接问一句「这几个删不掉，你自己删还是我过几分钟再试」。**绕路会把垃圾留在别的名字下，藏起来会让它在无人知晓处累积。**
 
 ## 八、评估与遗留
 

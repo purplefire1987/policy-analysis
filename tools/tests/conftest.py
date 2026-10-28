@@ -20,6 +20,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from pkb.core import tmp  # noqa: E402
 
 tmp.ensure()
+# 上一轮留下的临时目录先清掉（2026-10-29）：`cleanup` 失败被下面吞掉，残留没人管，
+# 一天就堆到 3992 项 / 42 MB。**谁生产谁收拾**——测试造的垃圾，测试开场先扫一遍。
+tmp.sweep()
 
 
 # 清理失败不该让测试失败（2026-10-28）
