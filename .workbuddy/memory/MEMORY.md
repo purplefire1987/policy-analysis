@@ -11,7 +11,7 @@
 - **两套文档各管一件事（2026-10-29 定）**：库 `AGENTS.md` 管**知识库**（写什么、何时写、什么算合格）；工作区 `README.md` 管**代码**（怎么跑、退出码、加检查项、分层契约、`fix` 边界、CI）。判据：**规则里出现 `pkb/` 的实现细节＝放错了地方**。AGENTS 节号未变，全库「见第十节」的引用仍有效。
 - **评分口径只有两处**：页面 `wiki/总览/评估口径.md`（怎么算分）＋ 数值 `pkb/domain/scoring.py`（六维名单／四类扣分／门槛线），`checks/docs/scoring.py` 对一次。项目里八套规则**只有六维等权折成总分**，其余是门槛（0/1）不折分——折分会让「体检全绿」抵消「内容欠账」。库 100 分制与助手 10 分制**不相加**（分母不同）。
 - **git**：`归档/`、`.cache/`、`归档/导出/` 在 `.gitignore`。两个仓库两段历史：工作区（远程 `git@github.com:purplefire1987/policy-analysis.git`，**已通**）与资料库（远程已配 `…/policy-vault.git`，**仓库待用户网页建**）。SSH `~/.ssh/id_ed25519` 无口令。**走 SSH 不走 connector**（建库 403）。
-- **专家包入口是符号链接**：`~/.workbuddy/plugins/.../policy-kb-tools/scripts` → `tools/`（绝对链接），物理只一份代码。`check_docs` 判形态（`core/expert.py` 四态 link／copy／alien／missing），副本即 exit 1。代价：专家包不自包含。**但 `plugins/cache/my-experts/gov-policy-analyst/1.0.0/` 还有一份平台写的实体副本**（旧版、无 skills 字段），不在任何判据视野里——改专家定义后须去专家中心点一次更新，否则改的是源、跑的是旧版（`T-20261029-01`）。**2026-10-29 起不再靠「记得去点更新」**：`core/expert.py::cache_drift()` 比源与 `plugins/cache/…/<版本>/`（字典序取最大版本），`check_docs` 一条判据，落后即 exit 1；改完源必须同步拷进缓存。
+- **专家包入口是符号链接**：`~/.workbuddy/plugins/.../policy-kb-tools/scripts` → `tools/`（绝对链接），物理只一份代码。`check_docs` 判形态（`core/expert.py` 四态 link／copy／alien／missing），副本即 exit 1。代价：专家包不自包含。**但 `plugins/cache/my-experts/gov-policy-analyst/1.0.0/` 还有一份平台写的实体副本**（旧版、无 skills 字段），不在任何判据视野里——改专家定义后须去专家中心点一次更新，否则改的是源、跑的是旧版（`T-20261029-01`）。**2026-10-29 起不再靠「记得去点更新」**：`core/expert.py::cache_drift()` 比源与 `plugins/cache/…/<版本>/`（字典序取最大版本），`check_docs` 一条判据，落后即 exit 1；改完源必须同步拷进缓存。**专家中心根本没有「更新」按钮**（2026-10-29 用户去找过）——同步从来只能由机器做，别再让人去 UI 里点。
 - **已归档勿引用勿重建**：`政策跟踪运营方案`、`政策链总览`、`主题词表`、`判断台账`（2026-10-28 停用，存 `归档/判断台账.md`，**保留原文件名**以让旧链接仍解析）。
 
 ## 二、库结构与五个自动化
@@ -32,7 +32,7 @@
 - `core/`：paths（唯一路径定义）／fs（`py_files()`、**`card_files()` 是卡片发现的唯一出口**）／fm／md（`scan_dated`／`scan_notes`）／doc（入库转 TXT）／git（只跑命令不判断）／web／report（`summary` 无默认值）。
 - `domain/`：blacklist／fields／chains／legacy／automations／lifecycle／ledger（`LEDGER_COLS`）。**口径只能住这里**；但**目录名与结构名可以进 core**（判据是「与 domain 某取值同值」，不是「出现某个词」）。
 - `checks/`：9 项＋`REGISTRY`（注册表即清单，不按文件名发现）；`run()` 返回 `Result`、不打印、不 `sys.exit`；`docs` 是包，执行顺序即报告顺序。
-- `actions/`：13 个，一模块一动作，文件名即动作名，下划线开头是内部件；与 `ACTIONS` 由 `test_smoke` 钉一一对应。**动作清单只在 `run.py list`，不进文档。** 三个检索口：`query`（词/链/时间窗，出「文件:行号」）／`trace`（政策→卡→链→信号→存档，`difflib` 给最近三条）／`recent`（近 N 天新增）。
+- `actions/`：一模块一动作，文件名即动作名，下划线开头是内部件；与 `ACTIONS` 由 `test_smoke` 钉一一对应。**动作清单只在 `run.py list`，不进文档；这里也不写数量**——曾写「13 个」，加到 16 无人回头改。两个检索口：`query`（词／链／时间窗／`--days` 近 N 天，出「文件:行号」）／`trace`（政策→卡→链→信号→存档，`difflib` 给最近三条）。
 - **`Result.summary` 就是 `▸摘要`**，明细在 `lines`，打多少由 `actions/check.py` 定。
 - **`check_docs` 两类硬核**：① 结构数字扫全文档（报文件＋行号；台账/报告/log 是快照不入扫描）；② 口径单源扫描（`ast` 取字符串常量比对 `domain.__all__`，`REQUIRED_FIELDS` 与通用词排除）。
 - **CI**：push/PR 跑 pyflakes ＋**空库** pytest（`POLICY_KB_VAULT` 指空目录）。CI 不跑 `run.py check`（要真库，守门人是体检）。
