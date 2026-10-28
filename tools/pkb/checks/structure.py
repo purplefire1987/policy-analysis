@@ -7,8 +7,10 @@
 
 检查 7 类：
   [1] 产业卡 frontmatter 完整性与取值合规（枚举、tags 数组写法、名称三字段一致）
+      ＋「基本信息」callout 五项与源值一致
   [2] 产业卡数值一致性（政策数=小节数、发布日期=最新、时间跨度首尾）
-  [3] 政策小节五要素齐全 + 日期严格倒序 + 标题格式
+  [3] 政策小节结构：模板每一栏都在（小标题、文号、生效日期、影响判断三行）
+      ＋ 日期严格倒序 ＋ 标题格式
   [4] 政策链与产业卡双向一致（主题匹配、关联卡片、所属政策链）
   [5] 受控词表（index 第二节）与产业卡双向一致
   [6] 全库 wikilink 断链
@@ -26,6 +28,11 @@ from pkb.core import (VAULT, CARD_DIR, CHAIN_DIR, INDEX, SKIP_DIRS,
                       parse_fm, extract_sections, all_names, FM_RE,
                       Result, Verdict)
 from pkb.domain import DOMAINS, IMPACTS, STATUSES, REQUIRED_FIELDS, CARD_SIZE_WARN
+# 模板里的结构名（callout 五项、小节小标题、影响判断三行）**不进 domain.__all__**：
+# 口径扫描以「代码常量与 domain 某取值逐字相同」为判据，而这些是通用词
+# （「关键词」「影响判断」在文档里到处都是），进扫描词典只会误伤正确写法。
+# 同 ledger 那两张表的处理（见 domain/__init__ 说明）。
+from pkb.domain.fields import CARD_INFO_ITEMS, SECTION_ELEMS, IMPACT_FIELDS
 
 THEME_FILE = INDEX   # 受控词表已并入 index.md 第二节（2026-10-24 三合一）
 
@@ -149,6 +156,57 @@ def _check_card_fields(name, fm, theme_words):
         add(issues, '1-frontmatter', name, f'「状态」={fm["状态"]} 不在允许值')
 
 
+def _check_info_box(name, fm, body, secs):
+    """「基本信息」callout：五项齐全，且三项可核的必须与源值一致（2026-10-28 增）。
+
+    为什么单列：这块从建库起就**没有任何判据**，于是漂成什么样都没人知道。盘点时
+    33 张卡全是四项（模板要求六项），其中「收录政策 N 项」与 frontmatter 的 `政策数`
+    有 5 张已经对不上（养老卡写「3 项」而实际 1 条）；「发文机关」是各小节机关的
+    手工汇总，养老卡拼成「国家发展改革委、民政部、国家卫生健康委、民政部、国务院」——
+    民政部出现三次。**重复拼接是手工汇总必然的样子**，不是个别疏忽。
+
+    所以「收录政策」这一项直接删掉（同一个量两处写必然漂，同第六节副本归零），
+    剩下的五项里三项能逐字核：最新政策＝最新小节、所属政策链＝frontmatter、
+    关键词＝frontmatter。「发文机关」只能核「没有重复项」——它是汇总，
+    逐项核对要重算一遍汇总，等于把同一逻辑写两处。
+    """
+    head = body.split('\n## ')[0]
+    if '> [!info]' not in head:
+        add(issues, '1-frontmatter', name, '缺「> [!info] 基本信息」callout（模板第一屏）')
+        return
+    got = re.findall(r'(?m)^>\s*-\s*([^：:]+)[：:]', head)
+    for item in CARD_INFO_ITEMS:
+        if item not in got:
+            add(issues, '1-frontmatter', name, f'基本信息缺「{item}」一行')
+
+    newest = f'{secs[0][1]}（{secs[0][0]}）' if secs else ''
+    m = re.search(r'(?m)^>\s*-\s*最新政策[：:]\s*(.+)$', head)
+    if m and newest and m.group(1).strip() != newest:
+        add(issues, '1-frontmatter', name,
+            f'「最新政策」写「{m.group(1).strip()[:40]}」，最新小节是「{newest[:40]}」')
+
+    raw_chain = re.sub(r'^\[\[|\]\]$', '', str(fm.get('所属政策链', '')).strip().strip('"'))
+    m = re.search(r'(?m)^>\s*-\s*所属政策链[：:]\s*(.+)$', head)
+    if m and raw_chain and raw_chain not in m.group(1) and m.group(1).strip() not in raw_chain:
+        add(issues, '1-frontmatter', name,
+            f'「所属政策链」写「{m.group(1).strip()[:30]}」，frontmatter 是「{raw_chain}」')
+
+    kw = fm.get('关键词')
+    m = re.search(r'(?m)^>\s*-\s*关键词[：:]\s*(.+)$', head)
+    if m and isinstance(kw, list):
+        if m.group(1).strip() != '、'.join(str(k) for k in kw):
+            add(issues, '1-frontmatter', name,
+                '基本信息里的关键词与 frontmatter 的 `关键词` 不一致（两处是同一个值，改一处要改两处）')
+
+    m = re.search(r'(?m)^>\s*-\s*发文机关[：:]\s*(.+)$', head)
+    if m:
+        parts = [x.strip() for x in re.split(r'[、，,]', m.group(1)) if x.strip()]
+        dup = {x for x in parts if parts.count(x) > 1}
+        if dup:
+            add(issues, '1-frontmatter', name,
+                f'基本信息「发文机关」重复列出 {sorted(dup)}——汇总时没去重')
+
+
 def check_cards(theme_words):
     cards = {}
     for p in sorted(CARD_DIR.glob('*.md')):
@@ -158,7 +216,10 @@ def check_cards(theme_words):
         if not fm:
             add(issues, '1-frontmatter', name, '缺少 frontmatter')
             continue
-        cards[name] = {'fm': fm, 'body': body, 'path': p}
+        secs, bad = extract_sections(body)
+        # 一次切好存进来：下面三处判据（callout／数值／每节栏位）都要用它，
+        # 各切一遍等于同一件事写三遍，还多两次全库重扫。
+        cards[name] = {'fm': fm, 'body': body, 'path': p, 'secs': secs, 'bad': bad}
 
         # 体积哨兵（只提示，不阻断）：卡越大，每次插入新政策要读入的 token 越多。
         # 这不是格式错误，是使用成本——所以放警告不放问题。
@@ -170,15 +231,16 @@ def check_cards(theme_words):
         _check_card_fields(name, fm, theme_words)
         _check_tags(name, fm, text)
         _check_keywords(name, fm, text)
+        _check_info_box(name, fm, body, secs)
 
     return cards
 
 
 def check_numbers(cards):
     for name, c in cards.items():
-        fm, body = c['fm'], c['body']
-        secs, bad_titles = extract_sections(body)
-        for t in bad_titles:
+        fm = c['fm']
+        secs = c['secs']
+        for t in c['bad']:
             add(issues, '3-小节', name, f'小节标题格式不符（应为 `### YYYY-MM-DD · 政策名`）：{t[:50]}')
 
         n_declared = fm.get('政策数', '')
@@ -205,21 +267,42 @@ def check_numbers(cards):
                     break
 
 
+def _check_section(name, d, t, chunk):
+    """一个小节的模板合规：小标题齐、有文号、有生效日期、影响判断三行（2026-10-28 增）。
+
+    此前只查四个小标题，于是「文号」与「生效日期」两栏 157 个全节无一有，
+    「影响判断」有 13 处写成整段论述而不是三行——**都不报错**。判据补到这一步，
+    模板要求的每一栏才有对应的检查点；没有检查点的栏位等于不存在。
+    """
+    label = f'{d} · {t}'
+    for s in SECTION_ELEMS:
+        if f'**{s}**' not in chunk:
+            add(issues, '3-小节', name, f'{label[:46]} 缺「{s}」')
+    if '**文号**' not in chunk:
+        add(issues, '3-小节', name,
+            f'{label[:46]} 发文机关行缺「**文号**」——无文号的写「（无文号：规划／法律／报告）」，'
+            f'没查的写「（待补全）」，留空与没查分不开')
+    if '**生效日期**' not in chunk:
+        add(issues, '3-小节', name, f'{label[:46]} 缺「**生效日期**」')
+    if '**影响判断**' in chunk:
+        seg = chunk.split('**影响判断**', 1)[1].split('**国际对比**')[0]
+        for f in IMPACT_FIELDS:
+            if f not in seg:
+                add(issues, '3-小节', name,
+                    f'{label[:46]} 影响判断缺「{f}」——论述可附在后面作依据，三行骨架不能没有')
+
+
 def check_sections(cards):
-    """只查结构：七要素中除观点两项外的字段缺失＝结构问题，阻断。
+    """只查结构：模板要求的栏位缺失＝结构问题，阻断。
 
     观点覆盖率（完整／待补全／无观点三分类）是历史欠账，不阻断，
     已拆到 checks/views——两类问题语义不同，不该挤在同一个退出码里。
     """
     n_secs = 0
     for name, c in cards.items():
-        secs, _ = extract_sections(c['body'])
-        n_secs += len(secs)
-        for d, t, chunk, raw in secs:
-            label = f'{d} · {t}'
-            for s in ('核心要点', '变化性字眼', '与旧政策的关系', '影响判断'):
-                if f'**{s}**' not in chunk:
-                    add(issues, '3-小节', name, f'{label[:46]} 缺「{s}」')
+        n_secs += len(c['secs'])
+        for d, t, chunk, _raw in c['secs']:
+            _check_section(name, d, t, chunk)
     return n_secs
 
 
@@ -353,8 +436,8 @@ def fix_numbers(cards):
     """
     n, lines = 0, []
     for name, c in cards.items():
-        path, fm, body = c['path'], c['fm'], c['body']
-        secs, _ = extract_sections(body)
+        path, fm = c['path'], c['fm']
+        secs = c['secs']
         if not secs:
             continue
         dates = [d for d, _, _, _ in secs]

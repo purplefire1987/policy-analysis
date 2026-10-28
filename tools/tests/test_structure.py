@@ -109,3 +109,114 @@ class Test关键词(unittest.TestCase):
         errs, warns = self._kw('---\n关键词: [甲, 乙]\n---\n')
         self.assertEqual(errs, [])
         self.assertTrue(any('3 个' in m or '只有' in m for _o, m in warns), warns)
+
+
+GOOD = '''---
+关键词: [甲, 乙, 丙]
+所属政策链: "[[政策链-能源]]"
+---
+
+# 能源
+
+> [!info] 基本信息
+> - 产业分类：能源
+> - 最新政策：某政策（2026-10-01）
+> - 所属政策链：[[政策链-能源]]
+> - 发文机关：甲部、乙部
+> - 关键词：甲、乙、丙
+
+## 政策演进
+
+### 2026-10-01 · 某政策
+
+**发文机关**：甲部 ｜ **文号**：甲发〔2026〕1号 ｜ [政策原文](https://example.gov.cn/a)
+
+- **生效日期**：2026-10-01
+
+**核心要点**
+
+1. 甲。
+
+**变化性字眼**
+
+- **首次**：相对某文件。
+
+**与旧政策的关系**
+
+新增。
+
+**各方观点**
+
+| 来源主体 | 立场属性 | 核心观点摘要 | 来源链接 |
+|---|---|---|---|
+| 甲 | 官方解读 | 略 | https://example.gov.cn |
+
+**观点辨析**
+
+略。
+
+**影响判断**
+
+- 影响对象：甲
+- 影响程度：中
+- 一句话判断：略。
+'''
+
+
+class Test模板合规(unittest.TestCase):
+    """基本信息五项与每小节栏位：模板写了什么，就得有对应的检查点（2026-10-28）。
+
+    为什么测：这两块此前**一条判据都没有**——callout 33 张全少两项、157 个政策小节
+    的「文号」与「生效日期」栏一个都没有、13 处影响判断写成整段论述，全都不报错。
+    模板要求而脚本不查的栏位，等于不存在。
+    """
+
+    def judge(self, doc):
+        S.issues.clear()
+        S.warns.clear()
+        fm, body = S.parse_fm(doc)
+        secs, _bad = S.extract_sections(body)
+        S._check_info_box('能源', fm, body, secs)
+        for d, t, chunk, _r in secs:
+            S._check_section('能源', d, t, chunk)
+        return ([m for _o, m in S.issues.get('1-frontmatter', [])],
+                [m for _o, m in S.issues.get('3-小节', [])])
+
+    def test_全齐不报(self):
+        box, sec = self.judge(GOOD)
+        self.assertEqual((box, sec), ([], []))
+
+    def test_callout缺项要报(self):
+        box, _s = self.judge(GOOD.replace('> - 关键词：甲、乙、丙\n', ''))
+        self.assertTrue(any('关键词' in m for m in box), box)
+
+    def test_最新政策与第一小节不符要报(self):
+        box, _s = self.judge(GOOD.replace('某政策（2026-10-01）', '另一份（2026-09-01）'))
+        self.assertTrue(any('最新政策' in m for m in box), box)
+
+    def test_关键词与frontmatter不一致要报(self):
+        box, _s = self.judge(GOOD.replace('> - 关键词：甲、乙、丙', '> - 关键词：甲、乙'))
+        self.assertTrue(any('关键词' in m for m in box), box)
+
+    def test_发文机关重复要报(self):
+        box, _s = self.judge(GOOD.replace('甲部、乙部', '甲部、乙部、甲部'))
+        self.assertTrue(any('重复' in m for m in box), box)
+
+    def test_缺文号要报(self):
+        _b, sec = self.judge(GOOD.replace(' ｜ **文号**：甲发〔2026〕1号', ''))
+        self.assertTrue(any('文号' in m for m in sec), sec)
+
+    def test_缺生效日期要报(self):
+        _b, sec = self.judge(GOOD.replace('- **生效日期**：2026-10-01\n\n', ''))
+        self.assertTrue(any('生效日期' in m for m in sec), sec)
+
+    def test_影响判断缺三行要报(self):
+        bad = GOOD.replace('- 影响对象：甲\n- 影响程度：中\n- 一句话判断：略。',
+                           '- **财政端**：减少支出。')
+        _b, sec = self.judge(bad)
+        self.assertTrue(any('影响对象' in m for m in sec), sec)
+
+    def test_有论述也有三行不报(self):
+        ok = GOOD.replace('- 一句话判断：略。', '- 一句话判断：略。\n\n（以下为依据）\n- **财政端**：减少支出。')
+        _b, sec = self.judge(ok)
+        self.assertEqual(sec, [])

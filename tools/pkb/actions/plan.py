@@ -26,10 +26,11 @@ import re
 import json
 import datetime
 
-from pkb.core import (CARD_DIR, SIGNAL_DIR, COLLECT_LOG, LEDGER,
+from pkb.core import (CARD_DIR, SIGNAL_DIR, COLLECT_LOG, LEDGER, SECTION_HEAD,
                  read as lib_read, md_section_lines, table_rows, parse_date,
                  span, iso_week)
 from pkb.domain import STANCES, STANCE_MIN
+from pkb.domain.fields import views_state           # 观点两节状态，与 check_views 同一份
 from pkb.domain.ledger import LEDGER_COLS, col    # 列名→下标，不写裸下标
 from pkb.checks.docs.ledger import ledger_tables  # 两张表的分法只此一处（actions→checks 下行）
 # 路径与通用件唯一定义处：pkb/core/paths.py
@@ -37,8 +38,6 @@ from pkb.checks.docs.ledger import ledger_tables  # 两张表的分法只此一�
 TASKS = LEDGER                 # 任务台账.md
 LEDGER = COLLECT_LOG           # 采集日志.md（保留旧变量名，避免全文改名）
 
-SEC_HEAD = re.compile(r'^### (\d{4}-\d{2}-\d{2}) · (.+?)\s*$', re.M)
-ANY_H3 = re.compile(r'^### ', re.M)
 ORG = re.compile(r'\*\*发文机关\*\*：\s*([^｜|\n]+)')
 TITLE_NOISE = re.compile(r'^(关于|印发|转发)|(的)?(若干)?(通知|意见|方案|规划|办法|规定|条例|决定|公告|措施|指引|细则)$')
 
@@ -70,8 +69,8 @@ def d(s):
 
 def scan_cards():
     """返回 [{card, date, title, state, kind}]
-    state: a 完整 / b 待补全 / c 无观点节（口径与 check_views.py 对齐：
-           a 必须「各方观点」「观点辨析」两个标题都在、且不含（待补全））
+    state: a 完整 / b 待补全 / c 无观点节（判定在 domain.fields.views_state，
+           与 check_views 同一份实现——两处各写一遍，改口径就要改两处）
     kind:  b→'占位'  c→'无标题' 或 '缺辨析'
     """
     out = []
@@ -80,13 +79,13 @@ def scan_cards():
             continue
         card = p.stem.replace('政策卡片-', '')
         text = read(p)
-        hits = list(SEC_HEAD.finditer(text))
+        hits = list(SECTION_HEAD.finditer(text))
         for i, m in enumerate(hits):
             end = hits[i + 1].start() if i + 1 < len(hits) else len(text)
             chunk = text[m.end():end]
             has_v = '**各方观点**' in chunk
             has_d = '**观点辨析**' in chunk
-            ph = '（待补全）' in chunk
+            ph = views_state(chunk) == 'b'
             if has_v and has_d and not ph:
                 st, kind = 'a', ''
             elif has_v and ph:
@@ -140,7 +139,7 @@ def scan_signals():
     for p in sorted(SIGNAL_DIR.glob('*.md')):
         if p.name.startswith('.'):
             continue
-        items = [d(m.group(1)) for m in SEC_HEAD.finditer(read(p))]
+        items = [d(m.group(1)) for m in SECTION_HEAD.finditer(read(p))]
         items = [x for x in items if x]
         out[p.stem.replace('政策信号-', '')] = {
             'n': len(items), 'last': max(items) if items else None}
