@@ -379,6 +379,28 @@ def _missing_head(text, week):
     return None
 
 
+def _outcome(week, res, verdict, lines, legacy):
+    """check_week 的三元组 → Result：覆盖率算法与摘要措辞只在这里。
+
+    从 `run()` 里抽出来的（2026-10-28 有效代码行门槛改成分层后，`run()` 41 行
+    超了 checks/ 的 40）。抽的理由是它本来就不是「解析参数」该干的事——
+    参数怎么来、结果怎么表述，是两件事。
+    """
+    total = len(res['in_window'])
+    n_miss = len(res['missing'])
+    n_orph = len(res['orphans']) + len(res['placeholders'])
+    rate = (total - n_miss) / total * 100 if total else 100.0
+    if legacy:                            # 规则变更前的旧篇：报数，差异不计入退出码
+        return Result(Verdict.PASS,
+                      f'{week} 历史归档（规则变更前六节旧篇）：覆盖率 {rate:.1f}%'
+                      f'（漏 {n_miss}，错位 {n_orph}），差异不计入退出码', lines)
+    n_imp = len(res.get('impacts') or [])
+    more = f'；影响列 {n_imp} 处不合规' if n_imp else ''
+    return Result(verdict,
+                  f'{week} 覆盖率 {rate:.1f}%（漏 {n_miss}，错位 {n_orph}）' + more
+                  + ('  ✅' if verdict is Verdict.PASS else '  ❌'), lines)
+
+
 def run(argv=None):
     ap = argparse.ArgumentParser(description='周观点政策覆盖度校验')
     ap.add_argument('week_pos', nargs='?', metavar='week', help='如 2026-W42')
@@ -411,16 +433,4 @@ def run(argv=None):
     if res is None:                       # 文件不存在
         return Result(Verdict.FAIL,
                       f'{args.week} 周观点尚未生成（无文件，不是覆盖不足）  ❌', lines)
-    total = len(res['in_window'])
-    n_miss = len(res['missing'])
-    n_orph = len(res['orphans']) + len(res['placeholders'])
-    rate = (total - n_miss) / total * 100 if total else 100.0
-    if legacy:
-        return Result(Verdict.PASS,
-                      f'{args.week} 历史归档（规则变更前六节旧篇）：覆盖率 {rate:.1f}%'
-                      f'（漏 {n_miss}，错位 {n_orph}），差异不计入退出码', lines)
-    n_imp = len(res.get('impacts') or [])
-    more = f'；影响列 {n_imp} 处不合规' if n_imp else ''
-    return Result(verdict,
-                  f'{args.week} 覆盖率 {rate:.1f}%（漏 {n_miss}，错位 {n_orph}）' + more
-                  + ('  ✅' if verdict is Verdict.PASS else '  ❌'), lines)
+    return _outcome(args.week, res, verdict, lines, legacy)

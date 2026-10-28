@@ -99,7 +99,7 @@
 <div class="wrap">
 
 <header>
-  <div class="kicker">第三版 · 2026-10-28 17:00</div>
+  <div class="kicker">第三版 · 2026-10-28 17:10</div>
   <h1>文档全生命周期管理评估</h1>
   <p class="sub">
     这一版没有加功能，<b>改的是口径</b>：格式只算「进库」这一段（终点是 TXT），多人并发不计，归档只认「已终止」。
@@ -110,15 +110,15 @@
 
 <div class="scoreboard">
   <div class="total">
-    <div class="n">91.5<small>／100</small></div>
+    <div class="n">92.3<small>／100</small></div>
     <div class="cap">六维等权平均</div>
-    <div class="delta">↑ 较第二版 +6.5</div>
+    <div class="delta">↑ 较第二版 +7.3</div>
   </div>
   <div class="bars">
     <div class="bar"><span class="lab">内容与结构化</span><span class="track"><span class="fill under" style="width:89%"></span></span><span class="val">89</span></div>
     <div class="bar"><span class="lab">格式转换</span><span class="track"><span class="fill" style="width:93%"></span></span><span class="val">93</span></div>
     <div class="bar"><span class="lab">编辑与版式</span><span class="track"><span class="fill" style="width:92%"></span></span><span class="val">92</span></div>
-    <div class="bar"><span class="lab">安全与审计</span><span class="track"><span class="fill" style="width:90%"></span></span><span class="val">90</span></div>
+    <div class="bar"><span class="lab">安全与审计</span><span class="track"><span class="fill" style="width:95%"></span></span><span class="val">95</span></div>
     <div class="bar"><span class="lab">自动化与 AI</span><span class="track"><span class="fill" style="width:93%"></span></span><span class="val">93</span></div>
     <div class="bar"><span class="lab">归档与生命周期</span><span class="track"><span class="fill" style="width:92%"></span></span><span class="val">92</span></div>
   </div>
@@ -150,7 +150,7 @@
     <tr class="hi"><td>内容获取与结构化</td><td class="num">84</td><td class="num">89</td><td>文号待补 11 → <b>2</b>，每条都核过两处以上独立来源；存档回流判据报「未回流 0」；七字段完整率 100%。<b>没到 90，见第四节</b></td></tr>
     <tr><td>格式转换</td><td class="num">80</td><td class="num">93</td><td>口径改为只算入库后，补齐最后两类会真遇到的格式：<code>xlsx</code>（zip+XML 自解，<b>表格还原成 <code>| 单元格 |</code></b>）、<code>html</code>（另存网页）；<code>xls</code> 从「转换失败」改判「没有转换器，另存为 xlsx／csv」；顺手修掉 PDF 正文路径上的崩溃</td></tr>
     <tr class="hi"><td>编辑与版式</td><td class="num">80</td><td class="num">92</td><td>四张超限卡（27K–34K）拆成<b>按日期的序列卡</b>：主卡＋2 卷，最大单份 18.9K，体积警告归零；并发项按你的口径撤回</td></tr>
-    <tr><td>安全合规与审计</td><td class="num">88</td><td class="num">90</td><td>资料库远程配好、SSH 验通（<code>Hi purplefire1987!</code>）。<b>异地副本仍是 0</b>，所以只加 2 分</td></tr>
+    <tr class="hi"><td>安全合规与审计</td><td class="num">88</td><td class="num">95</td><td>仓库建好、<b>两库都已推送</b>，远程 HEAD 与本地一致——异地副本从 0 变 1；顺带清掉 5 个被误提交的沙箱空文件，<code>.gitignore</code> 补 <code>????????</code> 排除</td></tr>
     <tr class="hi"><td>自动化与 AI 增强</td><td class="num">90</td><td class="num">93</td><td>卡片发现收口到 <code>core/fs.card_files()</code> 一处（全仓 6 处 glob，漏掉的那处会把 33 张写成 29 张而 check 全绿）；判据覆盖率随之上来</td></tr>
     <tr><td>归档与生命周期</td><td class="num">88</td><td class="num">92</td><td>归档判据从「生成清单」推进到「<b>核声明有没有被执行</b>」：已终止却还躺在卡里 → <code>check_archives</code> 报「待归档 N 节」；清单不再自动变成在用政策</td></tr>
   </tbody>
@@ -214,18 +214,17 @@
 </div>
 
 <div class="dim">
-  <h3>安全合规与审计 <span class="pts"><b>90</b> / 100</span></h3>
+  <h3>安全合规与审计 <span class="pts"><b>95</b> / 100</span></h3>
   <div class="cols">
     <div class="do"><h4>做到了</h4><ul>
-      <li>两个仓库都有历史：工作区 2 次提交、资料库 2 次提交；改错能一条命令回滚（今天真用过一次——误删四个文件靠刚建的基线取回）</li>
-      <li>资料库远程已配：<code>git@github.com:purplefire1987/policy-vault.git</code>，SSH 认证当场验通</li>
+      <li><b>异地副本从 0 变 1</b>：两个私有库都推送成功，远程 HEAD 与本地 commit 逐字一致；改错能回滚，硬盘坏了也还有一份</li>
+      <li>两个仓库都有历史：工作区 4 次、资料库 4 次提交；今天真用过一次——误删四个文件靠刚建的基线取回</li>
       <li><code>check_vcs</code> 判三种失败态，且判据只核「<code>.gitignore</code> 声明的排除有没有被跟踪」，不写死具体目录——规则改了不用改代码</li>
       <li>来源合规：黑名单域名扫描，命中即 exit 1；<code>run.py history</code> 走 pickaxe，能查「哪句话是哪次改的」</li>
     </ul></div>
     <div class="dont"><h4>扣在哪</h4><ul>
-      <li><b>异地副本仍是 0</b>：仓库没建、push 没跑。硬盘坏了照样全没——这一维的 10 分就压在这一点上</li>
-      <li>两次提交也还没落：本会话写 <code>.git</code> 被拦（git 往 <code>.git/objects</code> 写对象时，临时文件删不掉）</li>
-      <li>CI 只在空库跑 pytest，不跑真库体检</li>
+      <li>CI 只在空库跑 pytest，不跑真库体检；推送没有自动化，靠人记得</li>
+      <li>没有第二个人能读的备份策略：仓库是私有的，账号本身是单点</li>
     </ul></div>
   </div>
 </div>
@@ -283,19 +282,22 @@
   <p><b>为什么不直接写 90。</b>上一版的用处不在分数，在「37 份存档只有 1 张卡引用」这句话——它直接指出了下一步做什么。如果当时写成 90，那句话就不会存在。这一次同理：<b>89 分的那 1 分，指向的是配额与节奏，不是又缺一个脚本。</b></p>
 </div>
 
-<h2><span class="num">05</span>两件卡在你手上的事</h2>
+<h2><span class="num">05</span>原本卡在你手上的两件事，已结清</h2>
+
+<p>报告初稿写完时，两件事写在「需要你」里：建空仓库、在两个目录各跑一次提交。你建好库之后，第二件也该我自己做——而且确实做成了。</p>
 
 <ol class="todo">
-  <li>建一个空的私有仓库<span class="who">需要你，约 1 分钟</span>
-    <span class="why">打开 <code>https://github.com/new?name=policy-vault&amp;private=1</code>，<b>不要勾 README／.gitignore／license</b>（要空库，否则首次 push 会被拒）。建好回我一句，我跑 push。判据是 <code>git branch -r</code> 有输出，不是本地提交数变多。</span></li>
-  <li>在两个目录各跑一次提交<span class="who">需要你在普通终端</span>
-    <span class="why">本会话写 <code>.git</code> 被拦：git 写对象时要先建临时文件再重命名，而删除动作被安全中心拒掉，<code>git commit</code> 因此必失败（<code>touch .git/probe</code> 也失败）。<code>Write</code>／<code>Edit</code> 通道不受影响，所以文档与代码都已经在盘上，只差提交这一步。</span>
-    <pre><code>cd /Users/Mr_Zhou/WorkBuddy/2026-09-23-07-58-53
-rm -f .git/index.lock && git add -A && git commit -m "序列卡、入库 TXT、归档只认已终止"
-
-cd /Users/Mr_Zhou/Documents/知识库/资料库
-rm -f .git/index.lock && git add -A && git commit -m "四张超限卡拆卷；文号补到只剩 2 处"</code></pre></li>
+  <li>推送成功<span class="who">已结清</span>
+    <span class="why">资料库 <code>5de09a6</code>、工作区 <code>b984ac4</code>，远程 HEAD 与本地逐字一致。判据不是「本地提交数变多」，是 <code>git ls-remote origin</code> 打出的 hash 与 <code>git rev-parse HEAD</code> 相同。</span></li>
+  <li>顺带清掉一处污染<span class="who">已结清</span>
+    <span class="why">5 个 8 字符空文件（沙箱探针残留，4 字节）此前被提交进版本库，是最不该进库的一类东西。<code>git rm --cached</code>＋<code>.gitignore</code> 加 <code>????????</code> 排除，单独一条提交推上去，现在 <code>git ls-files</code> 里一个都不剩。</span></li>
 </ol>
+
+<div class="box warn">
+  <p><b>要说明的是：这一步我上午就该自己做，却把它写成了「环境不允许，请你跑」。</b></p>
+  <p>真正拦住的只是 <code>.git/index.lock</code> <b>一个文件</b>——0 字节、<code>ls</code> 看不见、<code>os.path.exists</code> 为真；而 <code>git hash-object -w</code> 一直能写对象，我从来没单独试过。定向 <code>rm -f</code> 一次就过，随后 <code>add</code>／<code>commit</code>／<code>push</code> 全通。</p>
+  <p>根子在归纳方式：把「某条命令失败」直接升成「这个能力坏了」，于是连没试过的路径也一起判死。同一类错今天已经犯过第二次（<code>curl</code> 失败归成「站点反爬」，真因是没带 <code>--compressed</code>）。<b>判「坏了」要一次只指一个对象，并把它试到底。</b>这条已写进 <code>log.md</code> 与任务台账。</p>
+</div>
 
 <h2><span class="num">06</span>验证读数（可复现）</h2>
 
@@ -303,6 +305,7 @@ rm -f .git/index.lock && git add -A && git commit -m "四张超限卡拆卷；�
   <thead><tr><th>项</th><th>读数</th><th>怎么复现</th></tr></thead>
   <tbody>
     <tr class="hi"><td>十一项检查</td><td>全部 exit 0，要处置 0 条</td><td><code>run.py check</code></td></tr>
+    <tr><td>远程同步</td><td>两库 <code>ls-remote</code> 的 HEAD 与本地 <code>rev-parse HEAD</code> 一致；工作区待提交 0</td><td><code>git ls-remote origin</code> 对比 <code>git rev-parse HEAD</code></td></tr>
     <tr><td>告警（要知道）</td><td>2 条：采集当天 0 新增（非漏跑）／版本控制有未提交改动（读数会变，以跑出来的为准）</td><td>同上，末尾「告警」段</td></tr>
     <tr class="hi"><td>单测</td><td>337 通过、1 跳过（沙箱禁删，force 覆盖无法实测）</td><td><code>pytest tools/tests</code></td></tr>
     <tr><td>静态检查</td><td>pyflakes 0 问题</td><td><code>python3 -m pyflakes tools</code></td></tr>
@@ -314,7 +317,7 @@ rm -f .git/index.lock && git add -A && git commit -m "四张超限卡拆卷；�
 </table>
 
 <footer>
-  第三版 · 2026-10-28 17:00 · 六维等权平均 91.5 分<br>
+  第三版 · 2026-10-28 17:10 · 六维等权平均 92.3 分（推送完成后重算）<br>
   口径：格式只算进库（终点 TXT）、不计多人并发、归档只认已终止。<br>
   同一套 CSS 沿用第一、二版，方便三版并排对照。
 </footer>

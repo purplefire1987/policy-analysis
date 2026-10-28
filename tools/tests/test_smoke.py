@@ -107,27 +107,76 @@ class TestLayering(unittest.TestCase):
             self.assertIsNone(call.search(text), f'{p.name} 里出现了 sys.exit 调用')
 
 
-class TestFunctionSize(unittest.TestCase):
-    """可维护性门槛：一个函数超过 50 行，通常意味着它缝了两件事以上。
+def _code_lines(src, node):
+    """有效代码行：物理行去掉空行、纯注释行、函数开头那段 docstring。
 
-    2026-10-25 拆分前有 13 个函数超标（最长 120 行），拆完是 0 个。
-    这条测试把它钉住——加功能时顺手写长，会在这里被拦下。
+    为什么不用 `end_lineno - lineno`：那样量的其实是「写没写清为什么」。
+    2026-10-28 实测 `_check_info_box()` 48 行里 16 行在说明三项 callout 的判据来历、
+    `check_cards()` 45 行里 9 行在解释为什么逐份判体积——**解释越充分越先被拦下**，
+    而这个库里「判据不写理由，下一个人就会改回去」是付过代价的教训。
     """
-    LIMIT = 50
+    lines = src.splitlines()
+    skip = set()
+    head = node.body[0] if node.body else None
+    if (isinstance(head, ast.Expr) and isinstance(head.value, ast.Constant)
+            and isinstance(head.value.value, str)):
+        skip.update(range(head.lineno - 1, head.end_lineno))
+    return sum(1 for i in range(node.lineno - 1, node.end_lineno)
+               if i not in skip and lines[i].strip()
+               and not lines[i].strip().startswith('#'))
 
-    def test_单函数不超过50行(self):
+
+def _layer_limit(rel):
+    """按层分档：`pkb/checks/` 是判据本身，每个分支都要能单独测，卡 40；
+    其余（含 actions 的流程串联）到 60。判据要的是「每块能单独测、不缝两件事」，
+    不是「每块一样长」——同一个数字套在所有层上，只是把数借过来用。"""
+    return 40 if rel.parts[:2] == ('pkb', 'checks') else 60
+
+
+class TestFunctionSize(unittest.TestCase):
+    """可维护性门槛：按「有效代码行」量，按层分档。
+
+    2026-10-25 立的是「总行数 ≤50」，2026-10-25 拆分前有 13 个函数超标（最长 120 行）。
+    2026-10-28 改成代码行 + 分档，理由不是「宽一点好」：50 这个数从别处借来，
+    量的还是长度不是职责——30 行缝三件事过关、60 行只干一件事被拦。
+    """
+
+    def test_有效代码行不超分层门槛(self):
         root = Path(__file__).resolve().parents[1]
         files = [root / 'run.py'] + sorted((root / 'pkb').rglob('*.py'))
         over = []
         for p in files:
-            tree = ast.parse(p.read_text(encoding='utf-8'))
-            for node in ast.walk(tree):
+            src = p.read_text(encoding='utf-8')
+            rel = p.relative_to(root)
+            for node in ast.walk(ast.parse(src)):
                 if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    n = node.end_lineno - node.lineno
-                    if n > self.LIMIT:
-                        over.append(f'{p.relative_to(root)}:{node.lineno} '
-                                    f'{node.name}() {n} 行')
-        self.assertEqual(over, [], '超过 %d 行：%s' % (self.LIMIT, '；'.join(over)))
+                    n, lim = _code_lines(src, node), _layer_limit(rel)
+                    if n > lim:
+                        over.append(f'{rel}:{node.lineno} {node.name}() '
+                                    f'{n} 行 > {lim}')
+        self.assertEqual(over, [], '超出门槛：' + '；'.join(over))
+
+    def test_门槛只数代码行不数解释(self):
+        """判据自己要被实测过：注释与 docstring 不计入，真代码照数。
+
+        `--fix` 的正则写全角冒号、从建立起没修成过也不报错，是这个库吃过的亏。
+        这条用小段源码直接调 `_code_lines`，不落盘——判据对不对不该依赖临时目录。
+        """
+        src = ('def f():\n'
+               '    """三行说明。\n'
+               '\n'
+               '    还是说明。\n'
+               '    """\n'
+               '    # 一行注释\n'
+               '\n'
+               '    x = 1\n'
+               '    if x:\n'
+               '        # 缩进里的注释\n'
+               '        x = 2\n'
+               '    return x\n')
+        node = ast.parse(src).body[0]
+        # def 行、x=1、if、x=2、return：docstring 4 行与两行注释都不计
+        self.assertEqual(_code_lines(src, node), 5)
 
 
 class TestActionRegistry(unittest.TestCase):
