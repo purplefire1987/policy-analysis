@@ -31,6 +31,7 @@ from pkb.core import (CARD_DIR, SIGNAL_DIR, COLLECT_LOG, LEDGER,
                  span, iso_week)
 from pkb.domain import STANCES, STANCE_MIN
 from pkb.domain.ledger import LEDGER_COLS, col    # 列名→下标，不写裸下标
+from pkb.checks.docs.ledger import ledger_tables  # 两张表的分法只此一处（actions→checks 下行）
 # 路径与通用件唯一定义处：pkb/core/paths.py
 # 命名注意：lib 里 LEDGER=任务台账、COLLECT_LOG=采集日志；本文件沿用旧名 LEDGER=采集日志
 TASKS = LEDGER                 # 任务台账.md
@@ -312,25 +313,27 @@ def _stock(sig):
 
 
 def _todo():
-    """④ 任务台账待办：只取「负责环节＝采集」且未闭环的，按解法分成两堆。
+    """④ 任务台账待办：两张表各取一遍，只派「负责环节＝采集」的活。
 
-    「解法＝用户」的不进采集清单——它等的是人拍板，派给采集只会让它一直躺在待办里，
-    看起来像「没做完」。这类单列一段交给读者，与「机器自己能做」分开摆。
+    「等你拍板」那张表的行不进采集清单——它等的是人拍板，派给采集只会让它一直躺在待办里，
+    看起来像「没做完」。这一类单列一段交给读者，与「机器自己能做」分开摆。
+    归属不看行里的字，看它在哪张表（表名就是负责人，见 domain/ledger）。
     """
     out, mine = [], []
-    for r in table_rows(section(read(TASKS), '未闭环项')):
-        if len(r) < len(LEDGER_COLS):
-            continue
-        status = r[col('状态')]
-        if any(k in status for k in ('✅', '🚫')):
-            continue
-        item = {'id': r[col('编号')], 'found': r[col('首次发现')],
-                'issue': r[col('问题')], 'type': r[col('类型')],
-                'status': status, 'solve': r[col('解法')]}
-        if r[col('解法')] == '用户':
-            mine.append(item)
-        elif '采集' in r[col('负责环节')]:
-            out.append(item)
+    for owner, _head, rows in ledger_tables(read(TASKS)):
+        for _i, r in rows:
+            if len(r) < len(LEDGER_COLS):
+                continue
+            status = r[col('状态')]
+            if any(k in status for k in ('✅', '🚫')):
+                continue
+            item = {'id': r[col('编号')], 'found': r[col('首次发现')],
+                    'issue': r[col('问题')], 'type': r[col('类型')],
+                    'status': status, 'owner': owner}
+            if owner == '用户':
+                mine.append(item)
+            elif '采集' in r[col('负责环节')]:
+                out.append(item)
     return out, mine
 
 
@@ -374,7 +377,7 @@ def pr_todo(p):
     for t in p['todo']:
         print(f'  {t["id"]}｜{re.sub(r"[*`]", "", t["issue"])[:44]}｜{t["status"]}')
     if p['mine']:
-        print(f'\n【1b·等你拍板（解法＝用户，共 {len(p["mine"])} 项）】'
+        print(f'\n【1b·等你拍板（负责人＝用户，共 {len(p["mine"])} 项）】'
               f'这些机器做不了，也不该由自动化代签')
         for t in p['mine']:
             print(f'  {t["id"]}｜{re.sub(r"[*`]", "", t["issue"])[:52]}｜{t["status"]}')

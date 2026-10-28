@@ -29,13 +29,18 @@ from pkb.actions import ledger as A            # noqa: E402
 
 TODAY = datetime.date(2026, 10, 26)
 
+COLS = ('| 编号 | 首次发现 | 问题 | 类型 | 负责环节 | 状态 | 最近更新 | 关闭依据与下一步 |\n'
+        '|---|---|---|---|---|---|---|---|\n')
+
+# 两张表都要在（2026-10-28 起「负责人」是表名而不是一列），所以最小台账也得先立两张空表。
 HEAD = ('# 任务台账\n\n## 二、未闭环项\n\n'
-        '| 编号 | 首次发现 | 问题 | 类型 | 负责环节 | 解法 | 状态 | 最近更新 | 关闭依据与下一步 |\n'
-        '|---|---|---|---|---|---|---|---|---|---|\n')
+        '### 2a 机器在办（负责人＝机器）\n\n' + COLS +
+        '\n### 2b 等你拍板（负责人＝用户）\n\n' + COLS)
 
 
-def row(tid, status='🆕 待办', solve='机器'):
-    return (f'| {tid} | 2026-10-26 | 某问题 | 结构 | 采集 | {solve} | {status} '
+def row(tid, status='🆕 待办'):
+    """一行未闭环项。接在 HEAD 后面＝落在「等你拍板」那张表里（结构判据不看归属）。"""
+    return (f'| {tid} | 2026-10-26 | 某问题 | 结构 | 采集 | {status} '
             f'| 2026-10-26 | 待办 |')
 
 
@@ -97,20 +102,24 @@ if __name__ == '__main__':
     unittest.main()
 
 
-def ledger_text(rows, arch=None):
-    """一份最小台账：只有「未闭环项」与「关闭记录」两节，够判生命周期。"""
-    head = ('# 任务台账\n\n## 二、未闭环项\n\n'
-            '| 编号 | 首次发现 | 问题 | 类型 | 负责环节 | 解法 | 状态 | 最近更新 | 关闭依据与下一步 |\n'
-            '|---|---|---|---|---|---|---|---|---|\n')
-    tail = ('\n\n## 六、关闭记录（归档）\n\n'
+def ledger_text(rows, arch=None, user_rows=()):
+    """一份最小台账：两张表齐全，加「关闭记录」一节，够判生命周期。
+
+    行落在哪张表由调用方说清楚（`rows` 进机器表、`user_rows` 进等你拍板表）——
+    归属正是这一版要判的东西，测试夹具不该含糊。
+    """
+    body = ('# 任务台账\n\n## 二、未闭环项\n\n'
+            '### 2a 机器在办（负责人＝机器）\n\n' + COLS + '\n'.join(rows) + '\n\n'
+            '### 2b 等你拍板（负责人＝用户）\n\n' + COLS + '\n'.join(user_rows) + '\n')
+    tail = ('\n## 六、关闭记录（归档）\n\n'
             '| 编号 | 首次发现 | 关闭日 | 问题（摘要） | 关闭依据 |\n|---|---|---|---|---|\n'
             + (arch or '| — | — | — | — | — |') + '\n')
-    return head + '\n'.join(rows) + tail
+    return body + tail
 
 
-def trow(tid, status, days, note='依据。', solve='机器'):
+def trow(tid, status, days, note='依据。'):
     d = (TODAY - datetime.timedelta(days=days)).isoformat()
-    return (f'| {tid} | 2026-09-01 | 某问题 | 结构 | 采集 | {solve} | {status} | {d} | {note} |')
+    return f'| {tid} | 2026-09-01 | 某问题 | 结构 | 采集 | {status} | {d} | {note} |'
 
 
 class Test生命周期判定(unittest.TestCase):
@@ -212,22 +221,24 @@ class Test取值合规(unittest.TestCase):
         self.assertTrue(any('取值合规' in o for o in oks), oks)
 
     def test_类型写错要报出行号与取值表(self):
-        bad = '| T-2 | 2026-09-01 | 某问题 | 结构问题 | 采集 | 机器 | 🆕 待办 | 2026-10-26 | 依据。 |'
-        errs, _o = values(ledger_text([bad]))
+        bad = '| T-2 | 2026-09-01 | 某问题 | 结构问题 | 采集 | 🆕 待办 | 2026-10-26 | 依据。 |'
+        text = ledger_text([bad])
+        errs, _o = values(text)
         self.assertEqual(len(errs), 1, errs)
         self.assertIn('类型', errs[0])
         self.assertIn('结构问题', errs[0])
-        self.assertIn('第 7 行', errs[0])
+        line = text.split('\n').index(bad) + 1     # 行号按夹具现算，钉死数字会被改布局绊倒
+        self.assertIn(f'第 {line} 行', errs[0])
 
     def test_负责环节写错要说明后果(self):
-        bad = '| T-3 | 2026-09-01 | 某问题 | 结构 | 采集入库 | 机器 | 🆕 待办 | 2026-10-26 | 依据。 |'
+        bad = '| T-3 | 2026-09-01 | 某问题 | 结构 | 采集入库 | 🆕 待办 | 2026-10-26 | 依据。 |'
         errs, _o = values(ledger_text([bad]))
         self.assertEqual(len(errs), 1, errs)
         self.assertIn('负责环节', errs[0])
         self.assertIn('不再被读', errs[0])
 
     def test_两列都错各报一条(self):
-        bad = '| T-4 | 2026-09-01 | 某问题 | 结构错 | 采集入库 | 机器 | 🆕 待办 | 2026-10-26 | 依据。 |'
+        bad = '| T-4 | 2026-09-01 | 某问题 | 结构错 | 采集入库 | 🆕 待办 | 2026-10-26 | 依据。 |'
         errs, _o = values(ledger_text([bad]))
         self.assertEqual(len(errs), 2, errs)
 
@@ -327,23 +338,29 @@ class Test释放留痕(unittest.TestCase):
 
 
 
-class Test解法列(unittest.TestCase):
-    """「解法」只有机器／用户两个值（2026-10-28 增）。
+class Test两张表(unittest.TestCase):
+    """「负责人」不是一列，是两张表（2026-10-28 改）。
 
-    为什么测：写错的形态不是报错，而是**被当成机器的事**——等着用户拍板的行
-    从此埋在采集清单里，看着像「没做完」，实际上一直在等人。
+    为什么测：一列可以填错而无人知——那一行从此被当成机器的事埋着。表名写错的形态
+    更糟：**那张表整个不存在**，行要么落进另一张表、要么无处可去，`plan` 的【1b】空着，
+    看着像「没有等你拍板的事」。
     """
 
-    def test_解法写错要报(self):
-        bad = ('| T-5 | 2026-09-01 | 某问题 | 结构 | 采集 | 待定 | 🆕 待办 '
-               '| 2026-10-26 | 依据。 |')
-        errs, _o = values(ledger_text([bad]))
-        self.assertEqual(len(errs), 1, errs)
-        self.assertIn('解法', errs[0])
-        self.assertIn('机器／用户', errs[0])
+    def test_缺一张表要报(self):
+        text = ('# 任务台账\n\n## 二、未闭环项\n\n'
+                '### 2a 机器在办（负责人＝机器）\n\n' + COLS + row('T-1') + '\n')
+        errs, _w = judge(text)
+        self.assertTrue(any('负责人＝用户' in e for e in errs), errs)
 
-    def test_用户是合法值(self):
-        errs, _o = values(ledger_text([trow('T-6', '🆕 待办', 1, solve='用户')]))
+    def test_表名没写负责人要报(self):
+        text = ('# 任务台账\n\n## 二、未闭环项\n\n'
+                '### 机器在办\n\n' + COLS + row('T-1') + '\n\n'
+                '### 2b 等你拍板（负责人＝用户）\n\n' + COLS)
+        errs, _w = judge(text)
+        self.assertTrue(any('没写「负责人' in e for e in errs), errs)
+
+    def test_两张表都在就不报(self):
+        errs, _w = judge(HEAD + row('T-1') + '\n')
         self.assertEqual(errs, [])
 
 
@@ -351,14 +368,16 @@ class Test表头契约(unittest.TestCase):
     """表头必须与 `domain/ledger.LEDGER_COLS` 逐字一致。
 
     列序是三个模块（plan、checks、run.py ledger）的下标契约。表头改了代码没跟上，
-    读出来的就是相邻列——不报错，只是读错。所以表头本身也得被校验。
+    读出来的就是相邻列——不报错，只是读错。所以表头本身也得被校验，而且**两张表各校一次**。
     """
 
     def test_表头少一列要报(self):
         text = ('# 任务台账\n\n## 二、未闭环项\n\n'
+                '### 2a 机器在办（负责人＝机器）\n\n'
                 '| 编号 | 首次发现 | 问题 | 类型 | 负责环节 | 状态 | 最近更新 | 关闭依据 |\n'
                 '|---|---|---|---|---|---|---|---|\n'
-                '| T-1 | 2026-10-26 | 某问题 | 结构 | 采集 | 🆕 待办 | 2026-10-26 | 待办 |\n')
+                '| T-1 | 2026-10-26 | 某问题 | 结构 | 采集 | 🆕 待办 | 2026-10-26 | 待办 |\n\n'
+                '### 2b 等你拍板（负责人＝用户）\n\n' + COLS)
         errs, _w = judge(text)
         self.assertTrue(any('表头' in e for e in errs), errs)
 

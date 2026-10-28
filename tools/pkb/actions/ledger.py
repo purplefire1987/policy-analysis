@@ -88,7 +88,7 @@ def _print(plan, limit):
         head = f'【{n}·{title}' + (f'（≥{limit} 天）】' if key == 'archive' else '】')
         print(f'\n{head}{len(plan[key])} 条')
         for _i, c, why in plan[key]:
-            print(f'  {c[0]}｜{why}｜{c[col("状态")]}｜{c[col("解法")]}')
+            print(f'  {c[0]}｜{why}｜{c[col("状态")]}')
     return total
 
 

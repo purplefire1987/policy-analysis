@@ -16,8 +16,8 @@ import re
 from pkb.core import (AGENTS, INDEX, README, EXPERT_MD, STATUS, OVERVIEW_DIR,
                       LEDGER, CHECK_REPORT, read, parse_date)
 from pkb.domain import ARCHIVE_DAYS, STALE_DAYS, VERIFY_DAYS, OBSERVE
-from pkb.domain.ledger import (LEDGER_TYPES, LEDGER_OWNERS, LEDGER_SOLUTIONS,
-                               LEDGER_COLS, col)   # 不在 __all__，见 domain/__init__ 说明
+from pkb.domain.ledger import (LEDGER_TYPES, LEDGER_OWNERS, LEDGER_TABLES,
+                               LEDGER_COLS, col, owner_of)   # 不在 __all__，见 domain/__init__ 说明
 
 from ._state import err, warn, ok
 
@@ -70,42 +70,91 @@ def _task_sections(text):
     return out
 
 
-def _header(text, key):
-    """`key` 那节的表头单元格；读不到返回 None。"""
-    lines = text.split('\n')
-    for i, line in enumerate(lines):
-        if line.startswith('## ') and key in line:
-            for nxt in lines[i + 1:]:
-                if nxt.startswith('## '):
-                    return None
-                if nxt.lstrip().startswith('|'):
-                    return [x.strip() for x in nxt.strip().strip('|').split('|')]
-            return None
-    return None
+def ledger_tables(text):
+    """「未闭环项」里的两张表：[(负责人, 表头, [(行号, 八列)])]，按文内顺序。
+
+    `## ` 定节的边界、`### ` 定表的边界。表名里认不出「负责人＝X」时负责人给 None，
+    由 `check_ledger_shape` 报——**不猜**：猜错的代价是那张表里的行被当成机器的活
+    派出去，而它其实在等人。
+
+    为什么不复用 `table_rows`：那张表要跨节找、按 `|` 直接切，分不出「这一行属于哪张表」。
+    归属本身就是这一版要判的东西，得在切分时带出来。
+    """
+    out, in_sec = [], False
+    owner, head, rows, step = None, None, [], 0
+
+    def flush():
+        nonlocal owner, head, rows, step
+        if owner is not None or head:
+            out.append((owner, head, rows))
+        owner, head, rows, step = None, None, [], 0
+
+    for i, line in enumerate(text.split('\n')):
+        if line.startswith('## '):
+            flush()
+            in_sec = '未闭环项' in line
+            continue
+        if line.startswith('### '):
+            flush()
+            owner = owner_of(line) if in_sec else None
+            continue
+        if not in_sec or not line.lstrip().startswith('|'):
+            continue
+        cells = [x.strip() for x in line.strip().strip('|').split('|')]
+        if step == 0:
+            head, step = cells, 1
+        elif step == 1:
+            step = 2                       # 分隔行，不认
+        else:
+            rows.append((i, cells))
+    flush()
+    return out
+
+
+def _check_tables(tables):
+    """两张表本身：表名要写出负责人、表头要等于 `LEDGER_COLS`、两张都得在。
+
+    单拎出来是因为这三条判的都是「表」而不是「行」，与列数、编号、节位分开——
+    混在一个函数里，改一条就要动另一个判据的边界（也会把函数撑到五十行以上）。
+    """
+    bad = False
+    for owner, head, rows in tables:
+        if owner is None and (head or rows):
+            bad = True
+            err('台账', '「未闭环项」里有一张表的小节标题没写「负责人＝机器／用户」——'
+                        '表名就是负责人，认不出等于这张表的行没有归属')
+        if head and tuple(head) != LEDGER_COLS:
+            bad = True
+            err('台账', f'「{owner or "未标负责人"}」那张表的表头是 {"｜".join(head)}，'
+                        f'应为 {"｜".join(LEDGER_COLS)}——列序是三个模块的下标契约，'
+                        f'改表头必须同时改 domain/ledger.LEDGER_COLS')
+    marked = [o for o, _h, _r in tables if o]
+    for want in LEDGER_TABLES:
+        if want not in marked:
+            bad = True
+            err('台账', f'「未闭环项」少了「负责人＝{want}」那张表——两张表按负责人分，'
+                        f'少一张就有一类账没地方放')
+    return bad
 
 
 def check_ledger_shape():
-    """台账结构：T- 行必须住在两节之内、列数与表头一致、未闭环项里编号唯一。
+    """台账结构：T- 行必须住在两节之内、两张表都在、列数与表头一致、编号唯一。
 
     为什么单列（2026-10-26）：一条记录被粘成两行共用一行的形态（`… | ✅ 已关闭 | … || T-x | …`），
     `plan` 按行首取编号，后半条就**静默消失**——T-20261026-01 因此两天没进过派活清单，
     谁也没发现。同理有一行 ✅ 落在第五节后面，也读不到。判据认列数与节位，不认内容。
 
-    2026-10-28 加一条：**表头必须与 `domain/ledger.LEDGER_COLS` 逐字一致**。
-    理由是列序被三个模块按下标读——表头加了列而代码没跟上，读出来的就是相邻列，
-    「不报错、只是读错」。让表头本身成为契约，改列就必须改代码。
+    2026-10-28 加两条：① **每张表的表头都要与 `domain/ledger.LEDGER_COLS` 逐字一致**——
+    列序被三个模块按下标读，表头加了列而代码没跟上，读出来的就是相邻列，「不报错、只是读错」；
+    ② **两张表都得在，且表名要写「负责人＝X」**——表名就是分表依据，缺一张或写不出负责人，
+    那一类账就悄悄没有归属（`plan` 的【1b·等你拍板】会空着，看着像没事）。
     """
     text = read(LEDGER, '')
     if not text:
         warn('台账', '读不到任务台账，本项无法校验')
         return
     secs = _task_sections(text)
-    bad = False
-    head = _header(text, '未闭环项')
-    if head and tuple(head) != LEDGER_COLS:
-        bad = True
-        err('台账', f'「未闭环项」表头是 {"｜".join(head)}，应为 {"｜".join(LEDGER_COLS)}'
-                    f'——列序是三个模块的下标契约，改表头必须同时改 domain/ledger.LEDGER_COLS')
+    bad = _check_tables(ledger_tables(text))
     for name, rows in secs.items():
         home = next((k for k in LEDGER_HOMES if k in name), None)
         if not home:
@@ -161,18 +210,12 @@ def check_ledger_numbers():
 
 
 def ledger_rows(text):
-    """未闭环项里的 T- 行：[(全文行号, 九列)]。
+    """未闭环项里的 T- 行：[(全文行号, 八列)]，两张表合并，顺序同文内。
 
     只认「未闭环项」这一节——落在别节的是结构问题，由 `check_ledger_shape` 报，
     这里不重复判（同一件事两处判，改口径就要改两处）。
     """
-    out, cur = [], ''
-    for i, line in enumerate(text.split('\n')):
-        if line.startswith('## '):
-            cur = line
-        elif line.startswith('| T-') and '未闭环项' in cur:
-            out.append((i, [x.strip() for x in line.strip().strip('|').split('|')]))
-    return out
+    return [(i, c) for _o, _h, rows in ledger_tables(text) for i, c in rows]
 
 
 def age_of(cell, today):
@@ -182,7 +225,9 @@ def age_of(cell, today):
 
 
 def triage(text, today=None):
-    """把未闭环项分四堆：{archive, stale, overdue, observe} → [(行号, 九列, 为什么)]。
+    """把未闭环项分四堆：{archive, stale, overdue, observe} → [(行号, 八列, 为什么)]。
+
+    两张表一起过：要不要归档只看状态与日期，与它在「机器在办」还是「等你拍板」无关。
 
     动作（`run.py ledger`）与检查（每期体检）共用这一份判定：
     判定与执行各写一份，迟早一个判 3 天、一个判 5 天。
@@ -208,16 +253,18 @@ def triage(text, today=None):
 
 
 def check_ledger_values():
-    """「类型」「负责环节」「解法」三列只能取约定值（2026-10-26 增，10-28 加解法）。
+    """「类型」「负责环节」两列只能取约定值（2026-10-26 增）。
 
     为什么单列：取值表写在 AGENTS 与台账第一节，但以前一个字都没校验过。写错的代价
     不是报错，是**静默不被读**——`plan` 只抽「负责环节＝采集」，写成「采集入库」这一行
     就永远轮不到派活；类型写成「结构问题」，「内容类缺档」与「结构错」在体检里混成一类。
     与 T-20261026-01 那条「后半条静默消失」同形：账还在，只是没人再看它。
 
-    只判这三列，不判状态：状态是四态＋若干收尾写法（`✅ 已闭环`／`🚫 已放弃`／`⛔ 搁置`），
-    措辞还在演进，硬判会把正确写法判错（判据宁窄不错认）。
-    关闭记录（五列）没有这三列，不查。
+    「负责人」不在这里判：它已经不是一个可以选择的值，而是**表名**——写错的形态是
+    「表名认不出来」，由 `check_ledger_shape` 报（列里的取值可以填错，表名填错就没有那张表）。
+
+    只判这两列，不判状态：状态是四态＋若干收尾写法（`✅ 已闭环`／`🚫 已放弃`／`⛔ 搁置`），
+    措辞还在演进，硬判会把正确写法判错（判据宁窄不错认）。关闭记录（五列）不查。
     """
     text = read(LEDGER, '')
     if not text:
@@ -225,8 +272,7 @@ def check_ledger_values():
         return
     bad = 0
     checks = ((col('类型'), LEDGER_TYPES, '类型'),
-              (col('负责环节'), LEDGER_OWNERS, '负责环节'),
-              (col('解法'), LEDGER_SOLUTIONS, '解法'))
+              (col('负责环节'), LEDGER_OWNERS, '负责环节'))
     for i, c in ledger_rows(text):
         if len(c) < len(LEDGER_COLS):
             continue                      # 列数不对由 check_ledger_shape 报，这里不重复判
@@ -237,8 +283,7 @@ def check_ledger_values():
             err('台账', f'{c[0]} 第 {i + 1} 行{label}「{c[idx]}」不在取值表内'
                         f'（{"／".join(allowed)}）——取值写错不会报错，只会让这一行不再被读')
     if not bad:
-        ok(f'台账取值合规（{len(LEDGER_TYPES)} 类类型、{len(LEDGER_OWNERS)} 个负责环节、'
-           f'{len(LEDGER_SOLUTIONS)} 种解法）')
+        ok(f'台账取值合规（{len(LEDGER_TYPES)} 类类型、{len(LEDGER_OWNERS)} 个负责环节）')
 
 
 def _queue():
