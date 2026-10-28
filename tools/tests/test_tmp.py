@@ -107,6 +107,17 @@ class Test清扫(unittest.TestCase):
         self.assertEqual(removed, 0)
         self.assertFalse(done, '没扫完要报出来，否则调用方以为清干净了')
 
+    def test_keep0清空现存全部(self):
+        """测试开场用 `keep=0`：那一刻目录里没有属于本次会话的东西，清光才是对的。
+
+        为什么不用「等 24 小时」：一次 pytest 会话造一百多个目录，跑几次就到千级；
+        等一天再清，等于把「一次会话的量」当成稳态下限。
+        """
+        new = self.put_dir('tmp_now', 0)
+        removed, _failed, _freed, _done = tmp_mod.sweep(force=True, keep=0)
+        self.assertEqual(removed, 1)
+        self.assertFalse(new.exists())
+
     def test_目录不存在不炸(self):
         tmp_mod.TMP_DIR = self.root / 'not' / 'there'
         self.assertEqual(tmp_mod.sweep(force=True), (0, 0, 0, True))

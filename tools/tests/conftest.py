@@ -20,9 +20,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from pkb.core import tmp  # noqa: E402
 
 tmp.ensure()
-# 上一轮留下的临时目录先清掉（2026-10-29）：`cleanup` 失败被下面吞掉，残留没人管，
+# 上一轮留下的临时目录先清空（2026-10-29）：`cleanup` 失败被下面吞掉，残留没人管，
 # 一天就堆到 3992 项 / 42 MB。**谁生产谁收拾**——测试造的垃圾，测试开场先扫一遍。
-tmp.sweep()
+# `keep=0` 而不是等 24 小时：会话开始的这一刻，目录里**没有**属于本次会话的东西
+# （`TemporaryDirectory` 还没建），所以清光才是对的。代价是一条会话只能有一个
+# pytest 在跑——本机单人操作，这个前提成立。
+tmp.sweep(force=True, keep=0)
 
 
 # 清理失败不该让测试失败（2026-10-28）

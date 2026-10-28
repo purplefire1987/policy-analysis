@@ -71,10 +71,11 @@ def _size(path, is_dir):
     return total
 
 
-def sweep(force=False, budget=SWEEP_BUDGET):
-    """清掉 `KEEP_SECONDS` 之前遗留的临时条目。
+def sweep(force=False, budget=SWEEP_BUDGET, keep=KEEP_SECONDS):
+    """清掉 `keep` 秒之前遗留的临时条目。
 
     返回 `(删除数, 失败数, 释放字节, 是否扫完)`。`force=True` 忽略节流（`fix` 用）。
+    `keep=0` 表示「清空现存全部」——只给测试开场用（那一刻目录里没有本会话的东西）。
     不抛异常：临时目录出事不该让主命令崩。
     """
     if not TMP_DIR.is_dir():
@@ -87,7 +88,7 @@ def sweep(force=False, budget=SWEEP_BUDGET):
                 return (0, 0, 0, True)
         except OSError:
             pass
-    cutoff = now - KEEP_SECONDS
+    cutoff = now - keep
     todo = []
     try:
         with os.scandir(TMP_DIR) as it:
