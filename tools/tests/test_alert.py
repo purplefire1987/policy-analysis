@@ -78,14 +78,27 @@ class Test页面(unittest.TestCase):
 
 
 class Test写盘失败不阻断(unittest.TestCase):
-    def test_写不进去返回False(self):
-        with mock.patch.object(alert, 'write', side_effect=OSError('read-only')):
-            self.assertFalse(alert.save([], []))
+    def test_写不进去返回fail(self):
+        with mock.patch.object(alert, 'read', return_value=''), \
+                mock.patch.object(alert, 'write', side_effect=OSError('read-only')):
+            self.assertEqual(alert.save([], []), 'fail')
 
-    def test_正常时返回True(self):
-        with mock.patch.object(alert, 'write') as w:
-            self.assertTrue(alert.save(['甲'], []))
+    def test_正常时写盘并返回written(self):
+        with mock.patch.object(alert, 'read', return_value=''), \
+                mock.patch.object(alert, 'write') as w:
+            self.assertEqual(alert.save(['甲'], []), 'written')
             self.assertIn('甲', w.call_args[0][1])
+
+    def test_除时间戳外没变就不写(self):
+        """幂等：本页每次 check 都会被调一次，无条件写就会每跑一次产一次 diff。"""
+        with mock.patch.object(alert, 'read', return_value=''), \
+                mock.patch.object(alert, 'write') as w1:
+            alert.save(['甲'], [])
+            first = w1.call_args[0][1]
+        with mock.patch.object(alert, 'read', return_value=first), \
+                mock.patch.object(alert, 'write') as w2:
+            self.assertEqual(alert.save(['甲'], []), 'same')
+            w2.assert_not_called()
 
 
 class Test只在全量写(unittest.TestCase):

@@ -21,7 +21,8 @@ import argparse
 import datetime
 
 from pkb.checks import REGISTRY
-from pkb.core import ALERT, Verdict, write
+from pkb.core import ALERT, Verdict, read, write
+from pkb.core.stamp import unchanged
 
 HEAD = """# 告警
 
@@ -84,13 +85,22 @@ def render(hard, soft, ts):
 
 
 def save(hard, soft):
-    """写盘，返回是否成功。写不进去不能连带把体检判失败——告警页是产物，不是判据。"""
+    """写盘，返回是否成功。写不进去不能连带把体检判失败——告警页是产物，不是判据。
+
+    **除时间戳外没变就不写**（2026-10-29）：本页每次 `check` 都会被重写，而模板第一行
+    就带生成时间，于是每跑一次体检就产一次「只有时间变了」的 diff——`check_vcs` 的
+    「未提交」再也清不掉，真变化被埋在噪音里。与 `归档/index.md` 同一处理，
+    判定共用 `core/stamp.py`。
+    """
+    body = render(hard, soft, datetime.datetime.now().strftime('%Y-%m-%d %H:%M'))
+    if unchanged(read(ALERT, ''), body, '生成时间：'):
+        return 'same'
     try:
         ALERT.parent.mkdir(parents=True, exist_ok=True)
-        write(ALERT, render(hard, soft, datetime.datetime.now().strftime('%Y-%m-%d %H:%M')))
-        return True
+        write(ALERT, body)
+        return 'written'
     except OSError:
-        return False
+        return 'fail'
 
 
 def run(argv=None):
@@ -110,7 +120,10 @@ def run(argv=None):
     if args.check:
         print('\n  （--check：未写盘）')
         return 0
-    if save(hard, soft):
+    res = save(hard, soft)
+    if res == 'same':
+        print('\n  内容未变，未写盘（时间戳只随内容更新）')
+    elif res == 'written':
         print(f'\n  已写入 {ALERT.relative_to(ALERT.parents[2])}')
     else:
         print('\n  ⚠ 告警页写不进去（目录或权限问题），上面的清单是本次结论')

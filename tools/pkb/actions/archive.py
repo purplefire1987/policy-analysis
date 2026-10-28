@@ -12,10 +12,10 @@
 """
 import argparse
 import datetime
-import re
 
 from pkb.core import (ARTICLE_DIR, CARD_DIR, VAULT, read, write,
                       card_files, card_parts, card_name, extract_sections)
+from pkb.core.stamp import unchanged as stamp_unchanged
 from pkb.domain import retired
 
 ARCHIVE_DIR = VAULT / '归档'
@@ -53,7 +53,7 @@ HEAD = """# 归档索引
 {backups}
 """
 
-STAMP = re.compile(r'^> 内容生成于：.*$', re.M)
+STAMP_PREFIX = '内容生成于：'
 
 
 def _same(old, new):
@@ -63,8 +63,11 @@ def _same(old, new):
     模板里带时间戳，于是**每次运行都产出一次 diff**——每周跑一次，一年的
     提交历史就多 52 条「只有时间变了」的噪音。定时任务不能只靠「人不在场
     就不会乱改」来保证安静。
+
+    判定搬到 `core/stamp.py`（2026-10-29）：`告警.md` 有同一个毛病，
+    两个动作各写一份「抹时间戳再比」就是又一处分家。
     """
-    return STAMP.sub('', old) == STAMP.sub('', new)
+    return stamp_unchanged(old, new, STAMP_PREFIX)
 
 
 def _rows():
