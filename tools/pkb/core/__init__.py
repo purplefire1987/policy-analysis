@@ -21,7 +21,7 @@ from .fs import (                                     # noqa: F401
     CARD_PREFIX, card_files, card_volumes, card_parts, card_name,
 )
 from . import expert                                  # noqa: F401
-from . import web, doc, tmp, git, markdown           # noqa: F401
+from . import web, doc, tmp, git                   # noqa: F401
 from .fm import (                                     # noqa: F401
     FM_RE, parse_fm, set_fm_field,
 )
@@ -53,8 +53,6 @@ __all__ = [
     'tmp',
     # 版本控制（只跑命令不判断，见 git.py）
     'git',
-    # 出库方向：Markdown → HTML（见 markdown.py）
-    'markdown',
     # 读写
     'md_files', 'read', 'write', 'digest', 'all_names', 'py_files', 'action_names',
     # 卡片发现（扁平卡与目录序列卡共用一条规则）

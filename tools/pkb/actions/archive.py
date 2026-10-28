@@ -12,8 +12,9 @@
 """
 import argparse
 import datetime
+import re
 
-from pkb.core import (ARTICLE_DIR, CARD_DIR, EXPORT_DIR, VAULT, read, write,
+from pkb.core import (ARTICLE_DIR, CARD_DIR, VAULT, read, write,
                       card_files, card_parts, card_name, extract_sections)
 from pkb.domain import retired
 
@@ -24,7 +25,7 @@ INDEX = ARCHIVE_DIR / 'index.md'
 HEAD = """# 归档索引
 
 > 本页由 `python3 tools/run.py archive` 覆盖式重写，**不要手改**。
-> 生成时间：{ts}
+> 内容生成于：{ts}（**内容变了才更新，不是每次运行时间**）
 > 保留策略见 [[AGENTS]] 第十一节（「删了还能重建吗」）。
 
 ## 一、政策原文存档（`raw/articles/`）
@@ -50,13 +51,20 @@ HEAD = """# 归档索引
 ## 四、备份包（`归档/备份/`）
 
 {backups}
-
-## 五、导出件（`归档/导出/`）
-
-由 `run.py render` 随时重生成，**不是内容，是成品副本**——可随时清空。
-
-{exports}
 """
+
+STAMP = re.compile(r'^> 内容生成于：.*$', re.M)
+
+
+def _same(old, new):
+    """只差时间戳就算「没变」。
+
+    为什么必须幂等（2026-10-28 挂成定时任务时才暴露）：原先无条件写盘，
+    模板里带时间戳，于是**每次运行都产出一次 diff**——每周跑一次，一年的
+    提交历史就多 52 条「只有时间变了」的噪音。定时任务不能只靠「人不在场
+    就不会乱改」来保证安静。
+    """
+    return STAMP.sub('', old) == STAMP.sub('', new)
 
 
 def _rows():
@@ -116,22 +124,13 @@ def _backups():
     return items
 
 
-def _exports():
-    if not EXPORT_DIR.exists():
-        return ['（尚无导出件）']
-    items = sorted(EXPORT_DIR.glob('*'))
-    if not items:
-        return ['（尚无导出件）']
-    return [f'- `{p.name}`' for p in items]
-
-
 def run(argv=None):
     ap = argparse.ArgumentParser(prog='archive', description='生成 归档/index.md（覆盖写）')
     ap.add_argument('--check', action='store_true', help='只打印统计，不写盘')
     args = ap.parse_args(list(argv or []))
 
     blocks = {'rows': _rows(), 'retired': _retired(), 'files': _files(),
-              'backups': _backups(), 'exports': _exports()}
+              'backups': _backups()}
     text = HEAD.format(ts=datetime.datetime.now().strftime('%Y-%m-%d %H:%M'),
                        **{k: '\n'.join(v) for k, v in blocks.items()})
     print('\n' + '=' * 62)
@@ -140,6 +139,9 @@ def run(argv=None):
     print('  ' + ' · '.join(f'{k} {len(v)} 行' for k, v in blocks.items()))
     if args.check:
         print('\n  （--check：未写盘）')
+        return 0
+    if _same(read(INDEX, ''), text):
+        print('\n  内容未变，未写盘（时间戳只随内容更新）')
         return 0
     ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
     write(INDEX, text)
