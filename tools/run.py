@@ -44,7 +44,7 @@ import sys
 from pkb.core import tmp
 
 from pkb.actions import (alert, archive, check, fetch, fix, history, ledger, link,
-                         plan, query, recent, sources, status, trace, week)
+                         plan, query, sources, status, trace, week)
 from pkb.actions import list as listing
 
 # 临时目录钉在工作区（见 pkb/core/tmp.py）：`tempfile` 默认把 cwd 当最后候选，
@@ -60,9 +60,8 @@ ACTIONS = {
     'fix':     (fix.run,     '一次性修复所有能自动修的'),
     'plan':    (plan.run,    '派活清单'),
     'week':    (week.run,    '周观点素材预取：某周政策与信号索引＋行号'),
-    'query':   (query.run,   '查库：按词／链／时间窗检索，给文件与行号（只检索不判断；--notes 连笔记）'),
+    'query':   (query.run,   '查库：按词／链／时间窗／近 N 天，给文件与行号（只检索不判断）'),
     'trace':   (trace.run,   '一条政策的全链：卡／链／信号／一手存档，只连关系不下结论'),
-    'recent':  (recent.run,  '近 N 天新增了什么（政策小节／信号条目／人的笔记）'),
     'history': (history.run, '翻 git 历史：某文件改过几次／这条口径哪次改的（--word）'),
     'alert':   (alert.run,   '生成告警页：要处置／要知道两档（覆盖写 wiki/总览/告警.md）'),
     'archive': (archive.run, '生成 归档/index.md：原文存档、已终止政策、备份包各一节'),

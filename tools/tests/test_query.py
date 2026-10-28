@@ -2,16 +2,20 @@
 # -*- coding: utf-8 -*-
 """`run.py query` 的单测。
 
-这一项的判据只有一条：**给出的行号真能读到那句话**。行号错一格比查不到更糟——
-读者按它去 Read，会读到相邻小节，然后以为库里就是这么写的。
+两种口径各一组判据：
+1. **检索**：**给出的行号真能读到那句话**。行号错一格比查不到更糟——读者按它去
+   Read，会读到相邻小节，然后以为库里就是这么写的。
+2. **总览**（`--days`，2026-10-29 由独立动作 `recent` 并入）：时间窗准、三类分得清、
+   没日期的笔记不猜日期，且**两种口径不许混用参数**（混用 exit 2）。
 
 跑法：python3 -m unittest discover -s tools/tests   或   python3 -m pytest -q tools/tests
 """
+import datetime
 import io
 import sys
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -159,3 +163,121 @@ class Test关键词兜底(unittest.TestCase):
     def test_单字不猜(self):
         self.assertEqual(query.kw_cards('车', self.MAP), [],
                          '一个字几乎人人命中，宁可不给')
+
+
+TODAY_CARD = """# 政策卡片-金融
+
+### {today} · 今天发布的政策
+
+正文。
+"""
+
+OLD_CARD = """# 政策卡片-金融
+
+### 2020-01-01 · 很久以前的政策
+
+正文。
+"""
+
+NOTE_DATED = """---
+类型: 灵感
+标题: 人的一篇异议
+日期: {today}
+---
+
+正文。
+"""
+
+NOTE_UNDATED = """---
+类型: 灵感
+标题: 忘了写日期的一篇
+---
+
+正文。
+"""
+
+
+class TestQueryDays(unittest.TestCase):
+    """`--days` 的总览口径。造「今天／很久以前／没写日期」三份，不依赖跑测试那天的日期。
+
+    为什么专测「无日期」：笔记是自由结构，`日期` 可能被漏填。默认补今天，会让
+    「近 7 天」凭空多出一篇；默认丢掉而不说，则等于那篇笔记不存在。所以判据是
+    **既不计入、又在输出里明说有几条被排除**。
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        root = Path(self.tmp.name)
+        for name in ('card', 'signal', 'notes'):
+            (root / name).mkdir()
+        today = datetime.date.today().isoformat()
+        (root / 'card' / '政策卡片-金融.md').write_text(TODAY_CARD.format(today=today), encoding='utf-8')
+        (root / 'card' / '政策卡片-旧.md').write_text(OLD_CARD, encoding='utf-8')
+        (root / 'signal' / '政策信号-金融.md').write_text(
+            TODAY_CARD.format(today=today).replace('政策卡片', '政策信号'), encoding='utf-8')
+        (root / 'notes' / '异议.md').write_text(NOTE_DATED.format(today=today), encoding='utf-8')
+        (root / 'notes' / '忘日期.md').write_text(NOTE_UNDATED, encoding='utf-8')
+        self.root = root
+        self._old = (query.CARD_DIR, query.SIGNAL_DIR, query.NOTES_DIR)
+        query.CARD_DIR, query.SIGNAL_DIR = root / 'card', root / 'signal'
+        query.NOTES_DIR = root / 'notes'
+
+    def tearDown(self):
+        query.CARD_DIR, query.SIGNAL_DIR, query.NOTES_DIR = self._old
+        self.tmp.cleanup()
+
+    def call(self, *argv):
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            code = query.run(list(argv))
+        return code, buf.getvalue()
+
+    def test_三类都统计(self):
+        code, out = self.call('--days', '7')
+        self.assertEqual(code, 0)
+        for want in ('政策 1', '信号 1', '笔记 1'):
+            self.assertIn(want, out)
+
+    def test_窗外的不列(self):
+        _code, out = self.call('--days', '7')
+        self.assertNotIn('很久以前的政策', out)
+
+    def test_按类型过滤(self):
+        _code, out = self.call('--days', '7', '--kind', '笔记')
+        self.assertIn('人的一篇异议', out)
+        self.assertNotIn('今天发布的政策', out)
+
+    def test_给了kind就只列那几类_0也列(self):
+        _code, out = self.call('--days', '7', '--kind', '笔记')
+        self.assertIn('笔记 1', out)
+        self.assertNotIn('政策 1', out, '给了 --kind 就不该再列别的类')
+
+    def test_无日期的笔记不猜日期但要说明(self):
+        _code, out = self.call('--days', '7')
+        self.assertNotIn('忘了写日期的一篇', out.split('另有')[0])
+        self.assertIn('另有 1 条没有日期', out)
+
+    def test_某一类没有就写0条(self):
+        empty = self.root / 'empty'
+        empty.mkdir()
+        query.NOTES_DIR = empty
+        _code, out = self.call('--days', '7')
+        self.assertIn('笔记 0', out)
+
+    def test_0条也说明空窗是信息(self):
+        code, out = self.call('--days', '1', '--kind', '笔记')
+        self.assertEqual(code, 0)
+
+    def test_总览口径不许与检索参数混用(self):
+        """混用必须 exit 2：让它照跑会输出一个形态说不清的半成品。"""
+        for extra in (('稀土',), ('--chain', '金融'), ('--since', '2026-10-01'), ('--full',)):
+            with redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as cm:
+                    query.run(['--days', '7'] + list(extra))
+            self.assertEqual(cm.exception.code, 2, f'{extra} 应被判为用法错')
+
+    def test_检索口径也认kind(self):
+        """`--kind` 不只在总览里生效；选了「笔记」会自动把 raw/notes 纳入。"""
+        _code, out = self.call('--kind', '笔记', '--since', '2026-01-01')
+        self.assertIn('人的一篇异议', out)
+        self.assertNotIn('今天发布的政策', out)
