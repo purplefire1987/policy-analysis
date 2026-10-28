@@ -23,6 +23,9 @@ from .fields import (                                   # noqa: F401
 #   一条会误伤正确写法的规则比不扫更糟——它教人以后绕开规则。
 #   需要这两个表的只有 `checks/docs/ledger.py`，它直接 import `pkb.domain.ledger`。
 from .chains import FIELD_MAP                           # noqa: F401
+# `scoring.py`（评估口径：六维、四类扣分、门槛线）**故意不从包里导出**，与 ledger 同理：
+# 「重复」「过期」是通用词，一进口径扫描词典，几十处正确措辞立刻被判违规。
+# 需要它的只有 `checks/docs/scoring.py`，直接 import `pkb.domain.scoring`。
 from .automations import AUTOMATIONS, PROMPT_ANCHORS    # noqa: F401
 from .legacy import LEGACY_WEEKS, IMPACT_SINCE                # noqa: F401
 from .lifecycle import (ARCHIVE_DAYS, STALE_DAYS, VERIFY_DAYS, OBSERVE,  # noqa: F401

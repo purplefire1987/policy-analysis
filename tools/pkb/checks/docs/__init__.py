@@ -28,6 +28,7 @@
     hygiene.py      log.md 卫生
     dnsource.py     来源域名
     literals.py     口径单源扫描
+    scoring.py      评估口径页与 domain/scoring.py 的数值对齐
 执行顺序即报告顺序，体检提示词与历史报告都对着这个顺序看，**不要重排**。
 """
 import argparse
@@ -35,7 +36,7 @@ import argparse
 from pkb.core import (AGENTS, INDEX, README, STATUS, EXPERT_MD, EXPERT_DIR, EXPERT_SKILL,
                       OVERVIEW_DIR, read, Result, Verdict)
 
-from . import consistency, declared, dnsource, expert_pkg, hygiene, ledger, literals
+from . import consistency, declared, dnsource, expert_pkg, hygiene, ledger, literals, scoring
 from ._state import rep
 
 EXPERT = EXPERT_MD
@@ -59,6 +60,7 @@ def _load_docs():
         '专家包README': read(EXPERT_DIR / 'README.md', ''),
         'SKILL': read(EXPERT_SKILL / 'SKILL.md', ''),
         '运行状态': read(STATUS, ''),
+        '评估口径': read(OVERVIEW_DIR / '评估口径.md', ''),
     }
 
 
@@ -100,6 +102,7 @@ def run(argv=None):
     consistency.check_structure_numbers(docs)
     consistency.check_no_hardcoded_count(docs)
     consistency.check_expert_refs(docs)
+    scoring.check_rubric(docs)
     ledger.check_no_direct_calls()
     ledger.check_ledger_shape()
     ledger.check_ledger_values()
