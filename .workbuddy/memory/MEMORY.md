@@ -75,7 +75,7 @@
 17. **并行子代理必 429**，批量补录走主通道；`%%` 注释不成对会吞正文（用 `<!-- -->`）；能点开≠能核验。
 18. **止损不等于治因**：一手存档正文乱码，先加 `looks_binary()` 只拦住结果；真因是该站回 gzip 而 `curl` 没带 `--compressed`。**结果不对，往回追一层问从哪步开始不对。**
 19. **osascript 删文件可能返回 -10004 而文件已进废纸篓**：以源目录文件数为准。
-20. **2026-10-28 上午「删除全失败、临时目录全不可用」，下午自己恢复了，真因没追到底**：拦住删除的是**安全中心「询问」那一层**（工具执行期没有确认框＝拒绝），**不是 seatbelt 规则的先后**——下午复查 profile，全局 deny 之后跟着一串 allow，最后一条 allow 晚于最后一条 deny，seatbelt 本来就该放行。`settings.json` 一字未改（`/tmp`、`/private/tmp`、`/var/tmp`、`~/tmp` 四条预设的 delete 一直是 `allow`，mtime 停在 03:23），所以恢复的原因不明，疑似应用重启重建 profile。当时的后果链仍值得记：`tempfile` 判「建了能删」→`gettempdir()` 抛错→每次 Python 启动留 4 个 8 字符空文件、`pytest` 起不来。`run.py fetch` 已改成不依赖 `tempfile`（`.cache/fetch/work/<时间戳>/`），这处不必回退。**复发时先读 `~/.workbuddy/logs/sandbox/<日期>/sandbox_*_000.log` 的 profile 段与 blocked 列表，别再靠猜。**
+20. **2026-10-28 上午「删除全失败、临时目录全不可用」，下午自己恢复了，真因没追到底**：拦住删除的是**安全中心「询问」那一层**（工具执行期没有确认框＝拒绝），**不是 seatbelt 规则的先后**——下午复查 profile，全局 deny 之后跟着一串 allow、最后一条 allow 晚于最后一条 deny，seatbelt 本来就该放行。`settings.json` 一字未改（四条临时目录预设 delete 一直是 `allow`，mtime 停在 03:23），恢复原因不明，疑似应用重启重建 profile。后果链仍值得记：`tempfile`「建了能删」判据全败→`gettempdir()` 抛错→每次 Python 启动留 4 个 8 字符空文件、`pytest` 起不来。`run.py fetch` 已不依赖 `tempfile`（`.cache/fetch/work/`），不必回退。**复发时先读 `~/.workbuddy/logs/sandbox/<日期>/sandbox_*_000.log` 的 profile 段与 blocked 列表。**
 21. **症状是「全都失败」而不是「个别失败」时，先读完整上下文，别找特例**：这次连查三轮策略、清 safe-delete 残留，答案其实就在每次执行的日志头几行。**另一面**：读到了 profile 也别急着定因果——两次读同一段，结论相反（先是「deny 排最后覆盖 allow」，复查才发现 allow 在后面）。**定因要给一次实测，能把候选逐个掐掉才算数。**
 
 ## 六、文档纪律
