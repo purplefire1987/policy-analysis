@@ -8,7 +8,7 @@
 """
 from pkb.core import TOOLS, expert, py_files
 
-from ._state import err, ok
+from ._state import err, ok, warn
 
 
 def check_expert_scripts():
@@ -30,3 +30,23 @@ def check_expert_scripts():
         return
     err('专家包', f'专家包 scripts 指向别处：{expert.link_target() or "(悬空)"}'
                   f'（应为 {TOOLS}）——跑 `run.py link` 归位')
+
+
+def check_expert_cache():
+    """平台缓存（实际加载的那份）与专家包源是否一致。
+
+    比 `check_expert_scripts` 弱一档：那里要求「物理只有一份」，这里**只能比对**——
+    缓存目录归平台写。所以这一项的作用不是消灭副本，是「副本敢漂就当场说」。
+    """
+    items = expert.cache_drift()
+    if items is None:
+        warn('专家包缓存', '没找到 plugins/cache 下的这个专家（未安装或换了机器），跳过')
+        return
+    if not items:
+        ok('专家包缓存与源一致（平台加载的就是这份）')
+        return
+    for rel, kind in items[:8]:
+        err('专家包缓存', f'{kind}：{rel}')
+    if len(items) > 8:
+        err('专家包缓存', f'另有 {len(items) - 8} 处差异未列出')
+    err('专家包缓存', '缓存落后于源——在实际加载的是缓存：把源同步进 cache 目录（改源后必须同步）')

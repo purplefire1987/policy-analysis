@@ -75,6 +75,9 @@ EXPERT_MD = EXPERT_DIR / 'agents' / 'gov-policy-analyst.md'
 EXPERT_SKILL = EXPERT_DIR / 'skills' / 'policy-kb-tools'
 # 专家包里的 scripts **不是副本**，是指向 TOOLS 的符号链接（见 pkb/core/expert.py）
 EXPERT_SCRIPTS = EXPERT_SKILL / 'scripts'
+# 平台**实际加载**的是缓存里的那份（`plugins/cache/<名>/<版本>/`），不是 marketplaces 源。
+# 2026-10-24 起这份缓存一直没跟上源，五天里专家定义缺「归档索引」——见 core/expert.py::cache_drift
+EXPERT_CACHE = Path.home() / '.workbuddy/plugins/cache/my-experts/gov-policy-analyst'
 
 # 扫描时要排除的目录
 SKIP_DIRS = ('.obsidian', '.trash', '.git', '__pycache__')

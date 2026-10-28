@@ -174,5 +174,42 @@ class TestEnsure(unittest.TestCase):
             self.assertIn('不存在', out)
 
 
+class 运行时缓存一致性(unittest.TestCase):
+    """`plugins/cache/` 那份才是平台加载的：源改了不同步，就等于没改。
+
+    与上面的形态判据互补——那里要求「只有一份」，这里承认「平台必然写一份副本」，
+    于是能做的只有比对。2026-10-24→10-29 它落后了 5 天，没人发现。
+    """
+
+    def test_一致时无差异(self):
+        with tempfile.TemporaryDirectory() as d:
+            src, cache = Path(d) / 'src', Path(d) / 'cache' / '1.0.0'
+            for root in (src, cache):
+                (root / 'agents').mkdir(parents=True)
+                (root / 'agents/x.md').write_text('同一份', encoding='utf-8')
+            self.assertEqual(expert.cache_drift(src, cache.parent), [])
+
+    def test_源改了没同步就报改过(self):
+        with tempfile.TemporaryDirectory() as d:
+            src, cache = Path(d) / 'src', Path(d) / 'cache' / '1.0.0'
+            for root in (src, cache):
+                (root / 'agents').mkdir(parents=True)
+            (src / 'agents/x.md').write_text('新的', encoding='utf-8')
+            (cache / 'agents/x.md').write_text('旧的', encoding='utf-8')
+            self.assertEqual(expert.cache_drift(src, cache.parent), [('agents/x.md', '改过')])
+
+    def test_缓存少了文件也报(self):
+        with tempfile.TemporaryDirectory() as d:
+            src, cache = Path(d) / 'src', Path(d) / 'cache' / '1.0.0'
+            src.mkdir(parents=True)
+            cache.mkdir(parents=True)
+            (src / 'SKILL.md').write_text('技能', encoding='utf-8')
+            self.assertEqual(expert.cache_drift(src, cache.parent), [('SKILL.md', '缓存缺')])
+
+    def test_没装这个专家时返回None(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertIsNone(expert.cache_drift(Path(d), Path(d) / '不存在'))
+
+
 if __name__ == '__main__':
     unittest.main()

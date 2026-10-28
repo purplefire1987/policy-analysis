@@ -21,7 +21,7 @@
 from pathlib import Path
 
 from .fs import py_files
-from .paths import EXPERT_SCRIPTS, TOOLS
+from .paths import EXPERT_CACHE, EXPERT_DIR, EXPERT_SCRIPTS, TOOLS
 
 LINK, COPY, ALIEN, MISSING = 'link', 'copy', 'alien', 'missing'
 
@@ -84,4 +84,33 @@ def drift(dest=None, src=None):
             out.append((rel, '改过'))
     for rel in sorted(set(want) - set(have)):
         out.append((rel, '包内缺'))
+    return out
+
+
+def cache_drift(src=None, cache=None):
+    """平台缓存与专家包源的差异：[(相对路径, '改过'|'缓存多'|'缓存缺')]。
+
+    为什么单判一条（2026-10-29）：`plugins/cache/<名>/<版本>/` 是**平台实际加载**的那份，
+    改 marketplaces 源不等于改了在跑的那份。2026-10-24 起这份缓存落后了 5 天——专家
+    定义缺「归档索引」这个自动化、`plugin.json` 缺 `skills` 字段，而 `check_docs` 比的
+    是源文件，缓存不在任何判据视野里。缓存是平台写的，删不掉，只能**看着它**。
+
+    版本目录由平台决定（`1.0.0` 之类），取字典序最大的那个：更新版本排后面。
+    """
+    src_root = Path(src or EXPERT_DIR)
+    base = Path(cache if cache is not None else EXPERT_CACHE)
+    if not base.is_dir():
+        return None                      # 没装这个专家（换机器、CI）：判据无从谈起
+    vers = [p for p in base.iterdir() if p.is_dir()]
+    if not vers:
+        return None
+    root = sorted(vers)[-1]
+    have = {p.relative_to(root).as_posix(): p
+            for p in root.rglob('*') if p.is_file() and not _is_noise(p)}
+    want = {p.relative_to(src_root).as_posix(): p
+            for p in src_root.rglob('*') if p.is_file() and not _is_noise(p)}
+    out = [(rel, '改过') for rel in sorted(set(have) & set(want))
+           if have[rel].read_bytes() != want[rel].read_bytes()]
+    out += [(rel, '缓存多') for rel in sorted(set(have) - set(want))]
+    out += [(rel, '缓存缺') for rel in sorted(set(want) - set(have))]
     return out
