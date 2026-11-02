@@ -36,6 +36,7 @@ import time
 from pathlib import Path
 
 from pkb.core import ARTICLE_DIR, CACHE_DIR, CARD_DIR, read, web, doc
+from pkb.core.fs import card_files, card_parts
 from pkb.domain import sources
 
 ORIGIN = sources.LEVELS[0]      # 只有「原文」落盘；三级取值仍从 domain 取，不写裸字符串
@@ -122,10 +123,13 @@ def collect(start, end):
     out = []
     if not CARD_DIR.exists():
         return out
-    for p in sorted(CARD_DIR.glob('*.md')):
-        for date, title, body in blocks(read(p, '')):
-            if start.isoformat() <= date <= end.isoformat():
-                out.append(entry_of(p, date, title, body))
+    # 序列卡（拆卷）的主文件只在索引，小节在卷里——必须走 card_files()+card_parts()，
+    # 平铺 glob('*.md') 会看不见卷，拆卷后「落一手」就静默漏掉那几张卡（第 7 处 glob）。
+    for main in card_files(CARD_DIR):
+        for p in card_parts(main):
+            for date, title, body in blocks(read(p, '')):
+                if start.isoformat() <= date <= end.isoformat():
+                    out.append(entry_of(p, date, title, body))
     out.sort(key=lambda e: (e['date'], e['card'], e['title']))
     return out
 
