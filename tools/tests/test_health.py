@@ -39,14 +39,16 @@ def log(*rows):
         for d, rnd, pol, sig, st in rows)
 
 
-def run_with(log_text, lamp='🟡', today=TODAY):
-    """把 read() 换成按路径返回假文本，today() 固定。"""
+def run_with(log_text, lamp='🟡', today=TODAY, at=None):
+    """把 read() 换成按路径返回假文本，today()／now() 固定。"""
     def fake_read(p, default=None):
         s = str(p)
         return log_text if s.endswith('采集日志.md') else STATUS_TPL.format(when='x', lamp=lamp)
 
+    stamp = at or datetime.datetime.combine(today, datetime.time(23, 0))
     with mock.patch.object(health, 'read', side_effect=fake_read), \
-         mock.patch.object(health, 'today', return_value=today):
+         mock.patch.object(health, 'today', return_value=today), \
+         mock.patch.object(health, 'now', return_value=stamp):
         return health.run([])
 
 
@@ -76,6 +78,37 @@ class Test三分状态(unittest.TestCase):
         r = run_with(text)
         self.assertIs(r.verdict, Verdict.FAIL)
         self.assertIn('留痕', r.summary)
+
+
+class Test今日轮次(unittest.TestCase):
+    """每日两轮（09:00／18:00）：漏一轮要看得见，但**不算断档**（2026-11-06）。
+
+    为什么单算一条：`BEAT_DAYS=1` 只看得见「整天没跑」。今天 09:00 跑了、18:00 没跑，
+    三分状态仍是「正常」，而下半天的新文件已经漏了——这是加开第二轮之后新出现的盲区。
+    """
+
+    def test_18点后只有一轮要提示(self):
+        r = run_with(log(('2026-10-25', '第三十四轮（09:00）', '1', '2', '✅ 已入库')))
+        self.assertIs(r.verdict, Verdict.PASS)
+        self.assertTrue(any('应有 2 轮' in ln for ln in r.lines), r.lines)
+
+    def test_两轮齐全不提示(self):
+        text = log(('2026-10-25', '第三十五轮（18:00）', '1', '2', '✅ 已入库'),
+                   ('2026-10-25', '第三十四轮（09:00）', '1', '1', '✅ 已入库'))
+        r = run_with(text)
+        self.assertIs(r.verdict, Verdict.PASS)
+        self.assertFalse(any('应有 2 轮' in ln for ln in r.lines), r.lines)
+
+    def test_今天一轮都没有也要提示(self):
+        text = log(('2026-10-24', '第三十三轮（18:00）', '1', '2', '✅ 已入库'))
+        r = run_with(text)
+        self.assertIs(r.verdict, Verdict.PASS)          # 没断满一天，不阻断
+        self.assertTrue(any('记了 0 轮' in ln for ln in r.lines), r.lines)
+
+    def test_18点前不判当天齐不齐(self):
+        r = run_with(log(('2026-10-25', '第三十四轮（09:00）', '1', '2', '✅ 已入库')),
+                     at=datetime.datetime(2026, 10, 25, 12, 0))
+        self.assertFalse(any('应有 2 轮' in ln for ln in r.lines), r.lines)
 
 
 class Test灯交叉核对(unittest.TestCase):

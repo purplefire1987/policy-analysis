@@ -57,8 +57,9 @@ class TestLegacy(unittest.TestCase):
 
     def test_影响列生效周是固定时点(self):
         # 固定时点，不是滑动窗口：滑动窗口会让旧篇随时间自动合格。
-        # 2026-10-28 撤掉判断编号后这一条仍要守——三档本身还在判。
-        self.assertEqual(IMPACT_SINCE, '2026-W43')
+        # 2026-11-06 后移一周：W43 是八节旧篇、影响列写着（J…）编号，三档口径从
+        # 撤线后的第一篇起判；「固定时点」这条性质没变，只是生效点随旧篇边界移动。
+        self.assertEqual(IMPACT_SINCE, '2026-W44')
 
 
 class Test必备节(unittest.TestCase):

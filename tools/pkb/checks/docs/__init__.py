@@ -111,7 +111,6 @@ def run(argv=None):
     ledger.check_ledger_values()
     ledger.check_ledger_numbers()
     ledger.check_ledger_hygiene()
-    ledger.check_release_logged()
     expert_pkg.check_expert_scripts()
     expert_pkg.check_expert_cache()
     hygiene.check_log()

@@ -54,39 +54,33 @@ class TestMatch(unittest.TestCase):
 
 
 class TestImpactColumn(unittest.TestCase):
-    """速览表「影响」列：三档、可挂编号、编号须真在第八节。"""
-
-    JUDGES = ('## 八、本周可证伪判断\n\n'
-              '| # | 判断 | 指标与阈值 | 数据出处（裁判） | 判定日 |\n'
-              '|---|---|---|---|---|\n'
-              '| J2026-W43-1 | 甲 | 份数 | 官方统计月报 | 2027-01-20 |\n')
+    """速览表「影响」列：只许三档（「三档＋判断编号」的形态 2026-11-06 撤除）。"""
 
     def _rows(self, *values):
         return [{'line': i + 2, '领域': '产业与能源', '政策': f'政策{i}',
                  '影响': v} for i, v in enumerate(values)]
 
-    def test_三档与挂牌号都通过(self):
-        rows = self._rows('高（J2026-W43-1）', '中', '低')
-        self.assertEqual(impact_issues(rows, self.JUDGES, IMPACT_SINCE), [])
+    def test_三档都通过(self):
+        rows = self._rows('高', '中', '低')
+        self.assertEqual(impact_issues(rows, IMPACT_SINCE), [])
 
     def test_复合档位不合格(self):
         rows = self._rows('中高', '中性偏正', '中（战略级）')
-        self.assertEqual(len(impact_issues(rows, self.JUDGES, IMPACT_SINCE)), 3)
+        self.assertEqual(len(impact_issues(rows, IMPACT_SINCE)), 3)
 
     def test_空值与叙述式影响不合格(self):
         rows = self._rows('', '影响深远，值得关注')
-        self.assertEqual(len(impact_issues(rows, self.JUDGES, IMPACT_SINCE)), 2)
+        self.assertEqual(len(impact_issues(rows, IMPACT_SINCE)), 2)
 
-    def test_引用第八节没有的编号不合格(self):
-        rows = self._rows('中（J2026-W43-9）')
-        issues = impact_issues(rows, self.JUDGES, IMPACT_SINCE)
-        self.assertEqual(len(issues), 1)
-        self.assertIn('不在第八节', issues[0][2])
+    def test_历史篇的编号形态不再放行(self):
+        """编号兼容已删：生效周之后写 `中（J…）` 一律不合格，不为旧形态留分支。"""
+        rows = self._rows('中（J2026-W43-1）')
+        self.assertEqual(len(impact_issues(rows, IMPACT_SINCE)), 1)
 
     def test_生效周之前不追溯(self):
-        # W42 写的是「中高」，按今天的口径重判等于伪造当时的判断
-        rows = self._rows('中高')
-        self.assertEqual(impact_issues(rows, '', '2026-W42'), [])
+        # W43 是八节旧篇，影响列写着「中（J2026-W43-1）」——按今天的口径重判等于伪造
+        rows = self._rows('中高', '中（J2026-W43-1）')
+        self.assertEqual(impact_issues(rows, '2026-W43'), [])
 
 
 if __name__ == '__main__':

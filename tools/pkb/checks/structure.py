@@ -684,7 +684,7 @@ def run(argv=None):
     wt = sum(len(v) for v in warns.values())
 
     if total == 0:
-        lines.append('✅ 结构校验通过（观点覆盖率见 check_views.py，属欠账进度，不参与本判定）')
+        lines.append('✅ 结构校验通过（观点覆盖率见 `run.py plan`，属欠账进度，不参与本判定）')
         return Result(Verdict.PASS,
                       f'{len(cards)} 卡／{n_secs} 小节：结构 0 问题'
                       + (f'，体积警告 {wt} 张' if wt else '，无体积警告'), lines)

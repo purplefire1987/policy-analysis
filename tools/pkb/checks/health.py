@@ -27,6 +27,11 @@ DASH = ('—', '-', '–', '')
 ZERO = ('0', '无新增', '无')
 LAMP_OK, LAMP_BAD = '🟢', '🔴'
 BEAT_DAYS = 1            # 采集按日跑：超过 1 天没有轮次即「该跑没跑」
+# 每日两轮（09:00／18:00，AGENTS 第一节「五个时刻」）；但**漏一轮不算断档**
+# （AGENTS 第五节：整天没有轮次才算）。两个数分工不同：BEAT_DAYS 管「断了没有」，
+# 这两个管「今天该有的轮次齐不齐」——只提示，不阻断。
+ROUNDS_PER_DAY = 2
+ROUNDS_END_HOUR = 18     # 过了这个点还没凑齐当日两轮，才提示；否则当天还没走完
 # 「0 也写 0」的生效日：更早的行用 — 指路 log.md，改写成 0 等于伪造数据，
 # 规则从建立起往前适用、不溯及既往。用固定日期而不是「最近 N 天」——
 # 滑动窗口会让违规拖两周就自动消失，那等于没有判据。
@@ -36,6 +41,11 @@ RULE_SINCE = datetime.date(2026, 10, 24)
 def today():
     """可被测试替换：判定依赖「今天」，不能写死在模块里。"""
     return datetime.date.today()
+
+
+def now():
+    """同上：判「今天轮次齐不齐」要用到小时，日期不够。"""
+    return datetime.datetime.now()
 
 
 def parse_collect_log(text):
@@ -89,7 +99,12 @@ def state_of(recs, d0):
             'days': days, 'traced': traced}
 
 
-def _judge(recs, lamp, d0):
+def today_rounds(recs, d0):
+    """当天真正的采集轮次数。手工补录、结构重构写在轮次列里也不算轮次。"""
+    return sum(1 for r in recs if r['date'] == d0 and is_round(r))
+
+
+def _judge(recs, lamp, d0, hour=None):
     """三件事一次判完：三分状态、灯交叉核对、「0 也写 0」。
 
     返回 (st, lamp, errs, warns)。判据只在这里，渲染与摘要不重算。
@@ -108,6 +123,18 @@ def _judge(recs, lamp, d0):
     elif st['kind'] == 'zero':
         warns.append(f'{last["date"]} 跑了但新增 0 条、信号 {last["signal"]} 条'
                      '——这是「没采到」，不是「没跑」，别去重跑自动化')
+
+    # 今日轮次齐不齐：只在「没断档」时判，否则与上面那条 Err 重复。
+    # 为什么需要：BEAT_DAYS=1 看不见「今天 09:00 跑了、18:00 没跑」——那天没断档，
+    # 三分状态仍是「正常」，而下半天的新文件已经漏了。这条只提示不阻断：
+    # 漏一轮最多丢半天线索，判成 exit 1 会让告警天天响（AGENTS 第五节）。
+    if st['kind'] != 'missing':
+        h = now().hour if hour is None else hour
+        n_today = today_rounds(recs, d0)
+        if h >= ROUNDS_END_HOUR and n_today < ROUNDS_PER_DAY:
+            warns.append(f'今天（{d0}）记了 {n_today} 轮，应有 {ROUNDS_PER_DAY} 轮'
+                         f'（09:00／18:00）——缺的那轮是没跑还是没留痕，看备注核；'
+                         '整天没有轮次才算断档，这里只提示')
 
     if days > BEAT_DAYS and lamp == LAMP_OK:
         errs.append(f'运行状态的采集灯是 {LAMP_OK}，但最近轮次在 {days} 天前'

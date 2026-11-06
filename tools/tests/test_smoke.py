@@ -68,7 +68,7 @@ class TestImportPurity(unittest.TestCase):
         """设计规则 4：pkb/**/*.py 导入时不许有副作用。"""
         import importlib
         for name in ('pkb.core', 'pkb.domain', 'pkb.checks.analysis', 'pkb.checks.docs',
-                     'pkb.checks.signals', 'pkb.checks.structure', 'pkb.checks.views',
+                     'pkb.checks.signals', 'pkb.checks.structure',
                      'pkb.checks.weeks', 'pkb.actions.check', 'pkb.actions.fix'):
             with self.subTest(module=name):
                 importlib.reload(importlib.import_module(name))

@@ -25,13 +25,6 @@ STOPWORDS = ['关于', '的通知', '通知', '的意见', '意见', '实施方�
              '决定', '办法', '规定', '若干', '进一步', '加强', '推动', '促进', '做好',
              '有关', '工作', '实施', '开展', '印发', '发布', '年度', '我国', '国家']
 
-# 判断编号形态：**只为兼容历史篇**（W43 及更早的「影响」列写过 `中（J2026-W43-1）`）。
-# 2026-10-28 取消周观点的可证伪判断与判断台账，新篇不再产生编号；这里保留形态，
-# 是为了让旧篇的校验口径倒不回去，而不是给新篇留口子——新篇写编号会因为
-# 「第八节表内没有」直接报错。
-JUDGE_ID = r'J\d{4}-W\d{2}-\d+'
-
-
 def norm(s):
     """归一化：去括号内容、去标点、去通用词"""
     s = re.sub(r'[（(][^）)]*[）)]', '', s)
@@ -170,36 +163,31 @@ def _reconcile(txt, rows):
     return declared, fm_count, dist, dist_sum
 
 
-def _judge_ids(txt):
-    """第八节表内出现过的判断编号集合（只认表格第一列）。"""
-    return set(re.findall(rf'^\|\s*({JUDGE_ID})\s*\|', txt, re.M))
-
-
-def impact_issues(rows, txt, week):
-    """速览表「影响」列：只许三档，可附一个判断编号，编号须真在第八节。
+def impact_issues(rows, week):
+    """速览表「影响」列：只许三档。
 
     为什么加（2026-10-26）：此前这一列没有校验，W42 出现过「中高」
     「中性偏正」「中（战略级）」——档位一旦自由发挥，「影响」就退回成形容词，
-    与第八节的对应关系也断了。生效周固定为 IMPACT_SINCE，不做滑动窗口：
+    与判断的对应关系也断了。生效周固定为 IMPACT_SINCE，不做滑动窗口：
     滑动窗口会让旧篇随时间自动合格。
+
+    编号形态（`中（J2026-W43-1）`）2026-11-06 撤除：第八节与判断台账 10-28 已撤销，
+    全库只剩 W43 一处。为一个历史格子留分支，等于给新篇也留了同一道口子；
+    改为把生效点移到撤线后的第一篇（W44），旧篇按「不改写」整体豁免。
     """
     if week < IMPACT_SINCE:
         return []
     ok_values = '|'.join(sorted(IMPACTS))
-    pat = re.compile(rf'^({ok_values})(?:[（(]({JUDGE_ID})[）)])?$')
-    ids = _judge_ids(txt)
+    pat = re.compile(rf'^({ok_values})$')
     issues = []
     for r in rows:
         cell = (r.get('影响') or '').replace('*', '').replace(' ', '')
-        m = pat.match(cell)
         if not cell:
             issues.append((r['line'], '（空）', '影响列不得留空'))
-        elif not m:
+        elif not pat.match(cell):
             issues.append((r['line'], cell,
-                           f'只许 {"／".join(sorted(IMPACTS))}，可附（判断编号）；'
+                           f'只许 {"／".join(sorted(IMPACTS))}；'
                            '「中高」「中性偏正」这类复合档位不算'))
-        elif m.group(2) and m.group(2) not in ids:
-            issues.append((r['line'], cell, f'{m.group(2)} 不在第八节表内'))
     return issues
 
 
@@ -257,7 +245,7 @@ def _render_impacts(ctx):
         return [f'（影响列校验自 {IMPACT_SINCE} 起生效，本篇不适用）', '']
     issues = ctx['impacts']
     if not issues:
-        return ['✅ 影响列合规（三档或三档＋判断编号）', '']
+        return ['✅ 影响列合规（三档）', '']
     out = [f'❌ 影响列 {len(issues)} 行不合规：']
     for line, cell, why in issues:
         out.append(f'   第 {line} 行「{cell}」→ {why}')
@@ -298,7 +286,7 @@ def check_week(week_str, verbose=True):
 
     matched, used, orphan, merged, undeclared = _match(in_window, rows)
     declared, fm_count, dist, dist_sum = _reconcile(txt, rows)
-    impacts = impact_issues(rows, txt, week_str)
+    impacts = impact_issues(rows, week_str)
     missing = [(d, t, c) for d, t, c in in_window if (d, t) not in matched]
 
     ctx = {'week': week_str, 'in_window': in_window, 'rows': rows, 'matched': matched, 'merged': merged,

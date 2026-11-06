@@ -4,7 +4,9 @@
 
 为什么单测这一条：覆盖率是体检里唯一会被人为「解释」掉的指标。
 把 (b) 占位算成已覆盖，整页就是绿的，而实际一个字都没写——这比不报更危险。
-classify() 是三档的唯一判据，故直接钉住它。
+口径本体是 `domain.fields.views_state`，`run.py plan` 是它唯一的出口
+（原先另有一个 `checks/views.py` 报同一个数，2026-11-06 作为重复项删除，
+所以这里钉的是口径，不是那个已删的检查）。
 """
 import sys
 import unittest
@@ -12,7 +14,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from pkb.checks.views import classify            # noqa: E402
+from pkb.domain.fields import views_state as classify   # noqa: E402
 
 A = '**各方观点**\n| 来源 | 立场 | 观点 |\n|---|---|---|\n| 券商 | 看多 | 增持 |\n**观点辨析**\n一致。\n'
 B = '**各方观点**\n（待补全）\n**观点辨析**\n（待补全）\n'

@@ -32,7 +32,7 @@ from pkb.core import (CARD_DIR, SIGNAL_DIR, COLLECT_LOG, LEDGER, SECTION_HEAD,
                  read as lib_read, md_section_lines, table_rows, parse_date,
                  span, iso_week)
 from pkb.domain import STANCES, STANCE_MIN
-from pkb.domain.fields import views_state           # 观点两节状态，与 check_views 同一份
+from pkb.domain.fields import views_state           # 观点两节状态的唯一实现（本文件消费）
 from pkb.domain.ledger import LEDGER_COLS, col    # 列名→下标，不写裸下标
 from pkb.checks.docs.ledger import ledger_tables  # 两张表的分法只此一处（actions→checks 下行）
 # 路径与通用件唯一定义处：pkb/core/paths.py
@@ -72,8 +72,8 @@ def d(s):
 
 def scan_cards():
     """返回 [{card, date, title, state, kind}]
-    state: a 完整 / b 待补全 / c 无观点节（判定在 domain.fields.views_state，
-           与 check_views 同一份实现——两处各写一遍，改口径就要改两处）
+    state: a 完整 / b 待补全 / c 无观点节（判定在 domain.fields.views_state——
+           覆盖率只有这一个出口，2026-11-06 起 check 不再单独报覆盖率）
     kind:  b→'占位'  c→'无标题' 或 '缺辨析'
 
     卡片发现走 `card_files`（2026-10-28）：拆成序列卡后，只扫扁平目录会让四张
