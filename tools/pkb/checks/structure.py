@@ -26,7 +26,7 @@ from collections import defaultdict
 
 from pkb.core import (VAULT, CARD_DIR, CHAIN_DIR, INDEX, SKIP_DIRS,
                       parse_fm, extract_sections, all_names, FM_RE, read,
-                      card_files, card_parts, card_name, card_volumes,
+                      card_files, card_parts, card_name, card_volumes, is_log,
                       Result, Verdict)
 from pkb.domain import (DOMAINS, IMPACTS, STATUSES, REQUIRED_FIELDS, CARD_SIZE_WARN,
                         retired)
@@ -567,8 +567,9 @@ def fix_links(names):
     for p in sorted(VAULT.rglob('*.md')):
         if any(d in p.parts for d in SKIP_DIRS):
             continue
-        # log.md 里的旧链接是史实（记录「当时指向哪里」），改了就是篡改历史，只报告不改
-        if p.name == 'log.md':
+        # log 里的旧链接是史实（记录「当时指向哪里」），改了就是篡改历史，只报告不改；
+        # 索引与分卷都算 log，单判 log.md 会在分卷之后漏掉后者
+        if is_log(p):
             continue
         text = p.read_text(encoding='utf-8', errors='ignore')
         orig = text

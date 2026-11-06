@@ -19,6 +19,7 @@ from .paths import (                                  # noqa: F401
 from .fs import (                                     # noqa: F401
     md_files, read, write, digest, all_names, py_files, action_names,
     CARD_PREFIX, card_files, card_volumes, card_parts, card_name,
+    log_volumes, is_log,
 )
 from . import expert                                  # noqa: F401
 from . import web, doc, tmp, git                   # noqa: F401
@@ -55,6 +56,7 @@ __all__ = [
     'git',
     # 读写
     'md_files', 'read', 'write', 'digest', 'all_names', 'py_files', 'action_names',
+    'log_volumes', 'is_log',
     # 卡片发现（扁平卡与目录序列卡共用一条规则）
     'CARD_PREFIX', 'card_files', 'card_volumes', 'card_parts', 'card_name',
     # frontmatter

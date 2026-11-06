@@ -68,15 +68,23 @@ def parse_args(rest):
 
 
 def pick_specs(only):
-    """按 --only 过滤。返回 None 表示没人匹配（已打印可选清单）。"""
+    """按 --only 过滤，支持逗号分隔多个片段。返回 None 表示有人没匹配上。
+
+    为什么要多选：一轮采集只关心信号、结构与文档，跑全量会把「周观点」「分析」
+    这些与本次无关的项一起扫一遍（30 秒里 15 秒花在它们身上）。**但只要有一个
+    片段匹配不到就整体返回 None**——部分匹配照跑，等于让人以为核过的范围比实际大，
+    与「参数拼错照样 exit 0」是同一个坑。
+    """
     if only is None:
         return list(REGISTRY)
-    specs = [s for s in REGISTRY if only.lower() in s.name.lower()]
-    if not specs:
-        print(f'没有检查项名匹配「{only}」。可用：'
+    keys = [k for k in re.split(r'[,，\s]+', only) if k]
+    hit = {s.name for s in REGISTRY if any(k.lower() in s.name.lower() for k in keys)}
+    miss = [k for k in keys if not any(k.lower() in s.name.lower() for s in REGISTRY)]
+    if miss or not hit:
+        print(f'--only 里这些名字匹配不到检查项：{"、".join(miss) or only}。可用：'
               + '、'.join(s.name.replace('check_', '').replace('.py', '') for s in REGISTRY))
         return None
-    return specs
+    return [s for s in REGISTRY if s.name in hit]      # 顺序仍按注册表，不按参数顺序
 
 
 def run_snapshot():

@@ -83,5 +83,51 @@ class Test历史豁免(unittest.TestCase):
         self.assertTrue(any('尚无合规新条目' in w for w in warns))
 
 
+class Test月度分卷(unittest.TestCase):
+    """分卷靠三处判据成立：条目归对卷、索引列全卷、最新条目有当月卷。"""
+
+    def setUp(self):
+        S.rep.oks.clear()
+        S.rep.errors.clear()
+        S.rep.warns.clear()
+
+    def errs(self):
+        return [m for _i, m in S.rep.errors]
+
+    def test_条目月份与卷名不符要报(self):
+        heads = [(0, '2026-11-01 · 决策 · 写错卷了'), (2, '2026-10-26 · 决策 · 这条对')]
+        H._wrong_month('log-2026-10.md', '2026-10', heads)
+        self.assertEqual(len(self.errs()), 1, self.errs())
+        self.assertIn('别的月份', self.errs()[0])
+
+    def test_索引齐全不报(self):
+        vols = [Path('log-2026-10.md'), Path('log-2026-11.md')]
+        H._check_index(vols, '# 索引\n\n| [[log-2026-11]] |\n| [[log-2026-10]] |\n')
+        self.assertEqual(self.errs(), [])
+
+    def test_索引漏列一卷要报(self):
+        """新建了分卷却没加进索引，读者就找不到那一卷——与没分一样的后果。"""
+        H._check_index([Path('log-2026-11.md')], '# 索引\n\n（忘了列分卷）\n')
+        self.assertEqual(len(self.errs()), 1, self.errs())
+        self.assertIn('索引缺', self.errs()[0])
+
+    def test_索引指向不存在的卷要报(self):
+        H._check_index([Path('log-2026-11.md')],
+                       '| [[log-2026-11]] |\n| [[log-2026-09]] |\n')
+        self.assertTrue(any('不存在' in e for e in self.errs()), self.errs())
+
+    def test_索引里不许写条目(self):
+        H._check_index([Path('log-2026-11.md')],
+                       '| [[log-2026-11]] |\n\n## 2026-11-07 · 决策 · 直接写在索引里\n')
+        self.assertTrue(any('索引只列分卷' in e for e in self.errs()), self.errs())
+
+    def test_最新条目必须有当月卷(self):
+        vols = [Path('log-2026-10.md'), Path('log-2026-11.md')]
+        H._check_current(vols, ['2026-11'])
+        self.assertEqual(self.errs(), [])
+        H._check_current(vols, ['2026-12'])
+        self.assertTrue(any('没有自己的卷' in e for e in self.errs()), self.errs())
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -48,7 +48,10 @@ TMP_DIR = WORKSPACE / '.cache' / 'tmp'
 INDEX = VAULT / 'index.md'                      # 唯一入口：链名单＋受控词＋快照
 AGENTS = VAULT / 'AGENTS.md'                    # 唯一规则来源
 README = VAULT / 'README.md'
-LOG = VAULT / 'log.md'
+LOG = VAULT / 'log.md'                          # 只做索引：列分卷，不写条目
+# 月度分卷（2026-11-07）：条目写进标题日期所在的 log-YYYY-MM.md。
+# 文件名即归属，所以「该往哪写」不需要人记；log.md 若重新收条目，判据会报。
+LOG_VOLUME_GLOB = 'log-[0-9][0-9][0-9][0-9]-[0-9][0-9].md'
 
 STATUS = OVERVIEW_DIR / '运行状态.md'            # 管「跑没跑」
 LEDGER = OVERVIEW_DIR / '任务台账.md'            # 管「修没修」

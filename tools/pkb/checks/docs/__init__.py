@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""文档一致性校验：核对 AGENTS / README / 专家定义 是否还与系统实际相符，并检查 log.md 卫生。
+"""文档一致性校验：核对 AGENTS / README / 专家定义 是否还与系统实际相符，并检查 log 卫生（按月分卷）。
 
 为什么需要它：
     规则只写一处（AGENTS.md），但执行副本散在库外——README、专家包定义、三个自动化
@@ -25,7 +25,7 @@
     consistency.py  库内容交叉核对（黑名单、删页、结构数字、脚本数量、专家引用）
     ledger.py       入口与台账（动作表、直调脚本、台账读数）
     expert_pkg.py   专家包入口形态
-    hygiene.py      log.md 卫生
+    hygiene.py      log 卫生（分卷、格式、索引）
     dnsource.py     来源域名
     literals.py     口径单源扫描
     scoring.py      评估口径页与 domain/scoring.py 的数值对齐

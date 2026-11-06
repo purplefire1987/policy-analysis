@@ -5,17 +5,34 @@
 判据：同一件事在两处以上出现，就搬到这里。
 """
 import hashlib
+import re
 from pathlib import Path
 
-from .paths import VAULT, TOOLS, SKIP_DIRS, CARD_DIR
+from .paths import VAULT, TOOLS, SKIP_DIRS, CARD_DIR, LOG_VOLUME_GLOB
 
 CARD_PREFIX = '政策卡片-'
+
+LOG_NAME_RE = re.compile(r'^log(?:-\d{4}-\d{2})?\.md$')
+
+
+def log_volumes():
+    """月度分卷（`log-YYYY-MM.md`），按月份升序。索引 `log.md` 不算分卷。"""
+    return sorted(p for p in VAULT.glob(LOG_VOLUME_GLOB) if p.is_file())
+
+
+def is_log(p):
+    """log 的索引或分卷：历史不是现状，多数校验应当跳过。
+
+    单判 `name == 'log.md'` 会在分卷之后失效——分卷会被当成普通页面扫进
+    「文档里写了什么数字」「旧链接要不要修」这类判断（2026-11-07 分卷时收的口径）。
+    """
+    return bool(LOG_NAME_RE.match(Path(p).name))
 
 
 def md_files(skip_log=True, roots=None):
     """全库 md 文件（已排除 .obsidian/.trash）。
 
-    skip_log：log.md 是历史，多数校验应跳过；只有 log 卫生检查会显式带上它。
+    skip_log：log 索引与分卷是历史，多数校验应跳过；只有 log 卫生检查会显式带上它们。
     """
     bases = roots or [VAULT]
     seen = set()
@@ -25,7 +42,7 @@ def md_files(skip_log=True, roots=None):
         for p in sorted(Path(base).rglob('*.md')):
             if any(d in p.parts for d in SKIP_DIRS):
                 continue
-            if skip_log and p.name == 'log.md':
+            if skip_log and is_log(p):
                 continue
             if p in seen:
                 continue
