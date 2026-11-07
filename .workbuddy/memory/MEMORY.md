@@ -21,6 +21,7 @@
 ## tools
 - 四层单向 import：`core/`→`domain/`（口径只住这里）→`checks/`（`REGISTRY` 即清单）／`actions/`（一模块一动作，清单只在 `run.py list`）。
 - `check --only` 可逗号多选，顺序按注册表；有一个片段匹配不到即 exit 2。全量 30 秒，其中 archives／structure／week／docs 四项全库扫描占 28 秒。
+- 读文本只走 `core.fs.read()`／写走 `write()`：一次运行内同一文件只真读一遍（mtime＋体积命中）。本机**每次 open≈25ms**，绕门不报错只变慢；`test_read_cache.py` 扫源码禁止 `read_text`。
 - 三页分工：采集日志管「采到哪天」（0 也写 0）／运行状态管「跑没跑」（灯）／台账管「修没修」。台账两张表（「负责人＝X」写在表名，换人＝搬行）；生命周期由 `run.py ledger` 推（✅90／🟡3／⏳7 天）。领取闸门＝距上次领取满 `GATE_DAYS` 天，与体检解耦。
 
 ## 坑（每条都真踩过）

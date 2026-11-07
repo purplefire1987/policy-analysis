@@ -35,7 +35,7 @@ import shutil
 import time
 from pathlib import Path
 
-from pkb.core import ARTICLE_DIR, CACHE_DIR, CARD_DIR, read, web, doc
+from pkb.core import ARTICLE_DIR, CACHE_DIR, CARD_DIR, read, write, web, doc
 from pkb.core.fs import card_files, card_parts
 from pkb.domain import sources
 
@@ -335,7 +335,7 @@ def write_file(e, lines, degraded, atts, stats, tmpdir, idx):
     while dest.exists():
         dest, n = ARTICLE_DIR / f'{name[:-3]}-{n}.md', n + 1
     dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_text(build(e, lines, degraded, atts_md, len(atts), n_ok), encoding='utf-8')
+    write(dest, build(e, lines, degraded, atts_md, len(atts), n_ok))
     stats['seen'].add(e['url'])
     stats['new'] += 1
     stats['chars'] += len('\n'.join(lines))

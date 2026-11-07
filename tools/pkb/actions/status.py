@@ -20,7 +20,7 @@
 import datetime
 import re
 
-from pkb.core import COLLECT_LOG, STATUS, LEDGER
+from pkb.core import COLLECT_LOG, STATUS, LEDGER, read
 
 DASH = '（未读到）'
 LIGHTS = ('🔴', '🟡', '🟢', '—')      # 「—」＝新建任务尚未到首跑时间（运行状态 §一 的判定表）
@@ -56,7 +56,7 @@ def collect_upto():
     """
     if not COLLECT_LOG.exists():
         return DASH, DASH
-    for line in COLLECT_LOG.read_text(encoding='utf-8').split('\n'):
+    for line in read(COLLECT_LOG, '').split('\n'):
         s = line.strip()
         if not (s.startswith('|') and '第' in s and '轮' in s):
             continue
@@ -91,7 +91,7 @@ def lights():
     out = []
     if not STATUS.exists():
         return out
-    for line in _section(STATUS.read_text(encoding='utf-8')):
+    for line in _section(read(STATUS, '')):
         cells = _cells(line)
         if not line.strip().startswith('|') or len(cells) < 3:
             continue
@@ -109,7 +109,7 @@ def open_items():
     if not LEDGER.exists():
         return 0, 0
     total = doing = 0
-    for line in LEDGER.read_text(encoding='utf-8').split('\n'):
+    for line in read(LEDGER, '').split('\n'):
         s = line.strip()
         if not (s.startswith('|') and re.search(r'T-\d{8}-\d{2}', s)):
             continue

@@ -22,7 +22,7 @@ import argparse
 import datetime
 import re
 
-from pkb.core import SIGNAL_DIR, iso_week, Result, Verdict
+from pkb.core import SIGNAL_DIR, read, iso_week, Result, Verdict
 
 DATE_LINE = re.compile(r'^### (\d{4}-\d{2}-\d{2}) · (.+?)\s*$', re.M)
 ISO_WEEK = re.compile(r'^(\d{4})-W(\d{2})$')
@@ -36,7 +36,7 @@ def load_pages():
     for p in sorted(SIGNAL_DIR.glob('*.md')):
         if p.name.startswith('.'):
             continue
-        text = p.read_text(encoding='utf-8', errors='ignore')
+        text = read(p, '')
         items = [(m.group(1), m.group(2)) for m in DATE_LINE.finditer(text)]
         items.sort(key=lambda x: x[0], reverse=True)
         pages[p.stem.replace('政策信号-', '')] = items
@@ -103,7 +103,7 @@ def scan_fields():
         if p.name.startswith('.'):
             continue
         page = p.stem.replace('政策信号-', '')
-        text = p.read_text(encoding='utf-8', errors='ignore')
+        text = read(p, '')
         hits = list(DATE_LINE.finditer(text))
         for i, m in enumerate(hits):
             end = hits[i + 1].start() if i + 1 < len(hits) else len(text)

@@ -57,6 +57,7 @@ run.py check --full               # 全跑且打全量输出（费 token）
 - 单向依赖：`run.py → actions → checks → domain → core`，低层不 import 高层。
 - **口径只住 `pkb/domain/`**：`checks` 里出现与 domain 取值相同的字符串常量会被 `check_docs` 判错（词典从 `domain` 现读）。`core` 里允许出现 `wiki/政策卡片` 这类**目录名**——那是数据位置不是口径，判据是「是否与 domain 某取值同值」，不是「有没有出现某个词」。
 - **路径只在 `pkb/core/paths.py` 定义一次**，其余模块 `from pkb.core import …`。换机器或换库位置设 `POLICY_KB_VAULT` / `POLICY_KB_WORKSPACE`，不改代码。
+- **读写文本只走 `core.fs.read()` / `write()`**：一次运行内同一份文件只真正读一遍（按 mtime＋体积命中，文件改过自动重读）。检查项之间有大量「同一批文件各读一遍」的重复——九个检查逻辑上不重叠，物理上全撞在库上。绕开这扇门（自己 `read_text`）不会报错，只会让整轮检查成倍变慢，所以 `tests/test_read_cache.py` 直接扫源码禁止。
 - **`checks` 只判定不打印**：`run()` 返回 `Result`，不 `sys.exit`；明细放 `Result.lines`，打多少由 `actions/check.py` 定。`Result.summary` **没有默认值**，不填就构造失败——「有退出码没摘要」从此写不出来。
 - **单函数有效代码行**：`pkb/checks/` ≤40，其余 ≤60。只数代码行——空行、纯注释、函数开头 docstring 都不计。判据量的是「缝了几件事」，不是「写没写清为什么」。
 - 快照刷新是 `check` 的第 0 步，**必须先于结构检查**，否则统计项拿旧快照报假警。

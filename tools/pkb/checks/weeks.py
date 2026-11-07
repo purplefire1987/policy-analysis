@@ -83,7 +83,7 @@ def week_window(week_str):
 
 def parse_weekly_table(path):
     """解析周观点速览表，返回 (rows, txt, lines, placeholders)"""
-    txt = path.read_text(encoding='utf-8')
+    txt = read(path, '')
     lines = txt.splitlines()
     start = None
     for i, ln in enumerate(lines):
@@ -407,7 +407,7 @@ def run(argv=None):
     legacy = args.week in LEGACY_WEEKS
     f = WEEKLY_DIR / f'周观点-{args.week}.md'
     if f.exists() and not legacy:
-        lack = _missing_head(f.read_text(encoding='utf-8'), args.week)
+        lack = _missing_head(read(f, ''), args.week)
         if lack:
             return Result(Verdict.FAIL,
                           f'{args.week} 结构缺节：无「{lack}」  ❌',

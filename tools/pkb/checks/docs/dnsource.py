@@ -7,7 +7,7 @@
 """
 import re
 
-from pkb.core import VAULT
+from pkb.core import VAULT, read
 from pkb.domain import BLACK
 
 from ._state import err, warn, ok
@@ -18,7 +18,7 @@ def check_sources():
     for p in sorted((VAULT / 'wiki').rglob('*.md')):
         if '.obsidian' in p.parts:
             continue
-        for i, line in enumerate(p.read_text(encoding='utf-8').split('\n'), 1):
+        for i, line in enumerate(read(p, '').split('\n'), 1):
             for u in re.findall(r'\]\((https?://[^)\s]+)', line):
                 for k, why in BLACK.items():
                     if k in u:

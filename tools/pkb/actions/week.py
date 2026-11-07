@@ -26,7 +26,7 @@ import datetime
 import json
 import re
 
-from pkb.core import CARD_DIR, SIGNAL_DIR, WEEKLY_DIR, scan_dated, summary
+from pkb.core import CARD_DIR, SIGNAL_DIR, WEEKLY_DIR, read, scan_dated, summary
 
 
 def week_range(week):
@@ -42,7 +42,7 @@ def week_range(week):
 
 
 def body_of(dirpath, sec, limit=None):
-    lines = (dirpath / sec['file']).read_text(encoding='utf-8', errors='ignore').split('\n')
+    lines = read(dirpath / sec['file'], '').split('\n')
     chunk = '\n'.join(lines[sec['start'] - 1:sec['end']])
     if limit and len(chunk) > limit:
         chunk = chunk[:limit] + f'\n……（截断，共 {len(chunk)} 字符）'

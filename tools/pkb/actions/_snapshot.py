@@ -23,7 +23,7 @@ import re
 from collections import defaultdict
 from datetime import date
 
-from pkb.core import CARD_DIR, INDEX, card_files, read  # 路径唯一定义处：pkb/core/paths.py
+from pkb.core import CARD_DIR, INDEX, card_files, read, write  # 路径唯一定义处：pkb/core/paths.py
 
 
 def collect():
@@ -57,7 +57,7 @@ def refresh(n_cards, cards, policies, today, dry):
     if not INDEX.exists():
         print('路径错误：未找到 index.md', INDEX)
         return 0
-    t = INDEX.read_text(encoding='utf-8')
+    t = read(INDEX, '')
     changes = 0
 
     def fix_row(m):
@@ -93,7 +93,7 @@ def refresh(n_cards, cards, policies, today, dry):
         t = t2
 
     if changes and not dry:
-        INDEX.write_text(t, encoding='utf-8')
+        write(INDEX, t)
     return changes
 
 

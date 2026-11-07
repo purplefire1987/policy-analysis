@@ -27,7 +27,7 @@ from collections import defaultdict
 from pkb.core import (VAULT, CARD_DIR, CHAIN_DIR, INDEX, SKIP_DIRS,
                       parse_fm, extract_sections, all_names, FM_RE, read,
                       card_files, card_parts, card_name, card_volumes, is_log,
-                      Result, Verdict)
+                      write, Result, Verdict)
 from pkb.domain import (DOMAINS, IMPACTS, STATUSES, REQUIRED_FIELDS, CARD_SIZE_WARN,
                         retired)
 # 模板里的结构名（callout 五项、小节小标题、影响判断三行）**不进 domain.__all__**：
@@ -56,7 +56,7 @@ def load_theme_words():
     """从 index.md 第二节读出 {大类: [产业卡名...]} 与全部标准词集合"""
     if not THEME_FILE.exists():
         return {}, set()
-    t = THEME_FILE.read_text(encoding='utf-8')
+    t = read(THEME_FILE, '')
     mapping = {}
     for line in t.split('\n'):
         if not line.startswith('|'):
@@ -454,7 +454,7 @@ def check_chains(cards, theme_map):
     chain_files = {}
     for p in sorted(CHAIN_DIR.glob('*.md')):
         chain = p.stem.replace('政策链-', '')
-        text = p.read_text(encoding='utf-8')
+        text = read(p, '')
         fm, body = parse_fm(text)
         if not fm:
             add(issues, '4-政策链', chain, '缺少 frontmatter')
@@ -487,7 +487,7 @@ def check_links(names):
     for p in VAULT.rglob('*.md'):
         if any(d in p.parts for d in SKIP_DIRS):
             continue
-        text = p.read_text(encoding='utf-8', errors='ignore')
+        text = read(p, '')
         text = re.sub(r'```.*?```', '', text, flags=re.S)
         text = re.sub(r'`[^`]*`', '', text)
         text = re.sub(r'<!--.*?-->', '', text, flags=re.S)
@@ -513,7 +513,7 @@ def check_stats(n_secs):
     """
     idx = INDEX
     if idx.exists():
-        t = idx.read_text(encoding='utf-8')
+        t = read(idx, '')
         for m in re.finditer(r'覆盖\s*(\d+)\s*项政策', t):
             if int(m.group(1)) != n_secs:
                 add(warns, '8-统计', 'index.md',
@@ -533,7 +533,7 @@ def fix_numbers(cards):
         if not secs:
             continue
         dates = [d for d, _, _, _ in secs]
-        text = path.read_text(encoding='utf-8')
+        text = read(path, '')
         orig = text
 
         # 冒号必须兼容半角与全角：库里实际用半角 `政策数: 3`，
@@ -550,7 +550,7 @@ def fix_numbers(cards):
             text = re.sub(r'(?m)^时间跨度[:：].*$', f'时间跨度: {expect}', text, count=1)
 
         if text != orig:
-            path.write_text(text, encoding='utf-8')
+            write(path, text)
             n += 1
             lines.append(f'      修复 数值 {name}：政策数→{len(secs)}、发布日期→{dates[0]}')
     return n, lines
@@ -571,7 +571,7 @@ def fix_links(names):
         # 索引与分卷都算 log，单判 log.md 会在分卷之后漏掉后者
         if is_log(p):
             continue
-        text = p.read_text(encoding='utf-8', errors='ignore')
+        text = read(p, '')
         orig = text
         for link in set(re.findall(r'\[\[([^\]]+)\]\]', text)):
             target = link.split('|')[0].split('#')[0].strip().rstrip('\\')
@@ -587,7 +587,7 @@ def fix_links(names):
             else:
                 skipped.append((p.name, target, len(cand)))
         if text != orig:
-            p.write_text(text, encoding='utf-8')
+            write(p, text)
     for f, t, k in skipped:
         lines.append(f'      跳过 断链 {f}：[[{t}]] 有 {k} 个候选，需人工确认')
     return n, lines

@@ -16,7 +16,7 @@ import argparse
 import re
 import collections
 
-from pkb.core import WORKSPACE, VAULT  # 路径唯一定义处：pkb/core/paths.py
+from pkb.core import WORKSPACE, VAULT, read, write  # 路径唯一定义处：pkb/core/paths.py
 from pkb.domain import BLACK, BAD_SUBJECT, is_bad  # 黑名单唯一定义处：pkb/domain/blacklist.py
 LINK = re.compile(r'\[([^\]]*)\]\((https?://[^)\s]+)\)')
 
@@ -155,7 +155,7 @@ def run(argv=None):
     touched = 0
     for p in files:
         rel = str(p.relative_to(VAULT))
-        text = p.read_text(encoding='utf-8')
+        text = read(p, '')
         if not any(k in text for k in BLACK):
             continue
         new_lines = []
@@ -171,7 +171,7 @@ def run(argv=None):
         new_text = downgrade_sections(new_text, before, rel, acts)
         log.extend(acts)
         if not dry and acts:
-            p.write_text(new_text, encoding='utf-8')
+            write(p, new_text)
 
     c = collections.Counter(a[1].split(' ')[0] for a in log)
     print(('【DRY-RUN】' if dry else '【已执行】') + f' 涉及文件 {touched} 个，动作 {len(log)} 项')
@@ -189,7 +189,7 @@ def run(argv=None):
         print('\n无违规，不落盘报告（空报告没有可读信息）')
         return 0
     rep = WORKSPACE / '来源清理报告.md'
-    rep.write_text('# 来源违规清理报告\n\n'
+    write(rep, '# 来源违规清理报告\n\n'
                    f'{"" if dry else "已执行"}　动作 {len(log)} 项，文件 {touched} 个\n\n'
                    + '\n'.join(f'- {a[1]}｜{a[0]}｜{a[2]}' for a in log) + '\n',
                    encoding='utf-8')

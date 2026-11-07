@@ -5,6 +5,7 @@
 判据：同一件事在两处以上出现，就搬到这里。
 """
 import hashlib
+import os
 import re
 from pathlib import Path
 
@@ -13,6 +14,14 @@ from .paths import VAULT, TOOLS, SKIP_DIRS, CARD_DIR, LOG_VOLUME_GLOB
 CARD_PREFIX = '政策卡片-'
 
 LOG_NAME_RE = re.compile(r'^log(?:-\d{4}-\d{2})?\.md$')
+
+# 一次运行内已读文本：绝对路径 -> ((mtime_ns, size), 文本)。
+# 为什么要有：本机**每打开一次文件约 25ms**（连读 1 字节也一样，stat 却是 0），
+# 而一轮全量自检里同一份卡片会被不同检查反复读十来次。九个检查各自扫库，
+# 逻辑上无重叠、物理上全撞在同一批文件上——开销不在「扫了几遍库」，在「开了几次文件」。
+# 判定仍以磁盘为准：每次拿 stat 比对 mtime 与 size，文件变过就重读，所以
+# 「写完立刻读」拿到的是新内容（写入口 write() 另外主动作废该条）。
+_READ_CACHE = {}
 
 
 def log_volumes():
@@ -51,21 +60,35 @@ def md_files(skip_log=True, roots=None):
 
 
 def read(p, default=None):
-    """读文本。文件不存在时：给了 default 就返回 default，否则抛异常。
+    """读文本，**一次运行内同一份文件只真正读一遍**。
 
     default 参数的由来：check_docs 与 plan_backlog 各自写过「文件不存在返回空串」
     的 read——同一件事两份拷贝，漏改不报错。统一到这里。
+
+    缓存按「绝对路径 + mtime + 体积」命中：文件被改过（无论是本进程还是别人改的）
+    自动重读，不会把旧文本喂给判据。**不要把读文件绕开这个函数**——
+    绕过一次就多开一次文件，而检查之间的重复读正是这条路上唯一的浪费。
     """
     p = Path(p)
-    if not p.exists():
+    try:
+        st = p.stat()
+    except OSError:
         if default is not None:
             return default
         raise FileNotFoundError(p)
-    return p.read_text(encoding='utf-8', errors='ignore')
+    key = os.path.abspath(p)
+    stamp = (st.st_mtime_ns, st.st_size)
+    hit = _READ_CACHE.get(key)
+    if hit is not None and hit[0] == stamp:
+        return hit[1]
+    text = p.read_text(encoding='utf-8', errors='ignore')
+    _READ_CACHE[key] = (stamp, text)
+    return text
 
 
 def write(p, text):
     Path(p).write_text(text, encoding='utf-8')
+    _READ_CACHE.pop(os.path.abspath(p), None)
 
 
 def digest(p):

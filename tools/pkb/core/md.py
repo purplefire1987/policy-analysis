@@ -9,6 +9,8 @@ import datetime
 import difflib
 import re
 
+from .fs import read
+
 SECTION_HEAD = re.compile(r'^### (\d{4}-\d{2}-\d{2})\s*·\s*(.+?)\s*$', re.M)
 
 
@@ -46,7 +48,7 @@ def scan_dated(dirpath):
     """
     out = []
     for p in sorted(dirpath.glob('*.md')):
-        lines = p.read_text(encoding='utf-8', errors='ignore').split('\n')
+        lines = read(p, '').split('\n')
         cur = None
         for i, line in enumerate(lines, 1):
             m = SECTION_HEAD.match(line)
@@ -72,7 +74,7 @@ def scan_notes(dirpath):
     from .fm import parse_fm          # 同层导入，放在函数里只为避免模块级循环
     out = []
     for p in sorted(dirpath.glob('*.md')):
-        text = p.read_text(encoding='utf-8', errors='ignore')
+        text = read(p, '')
         fm, _body = parse_fm(text)
         out.append({'file': p.name, 'start': 1, 'end': len(text.split('\n')),
                     'date': str(fm.get('日期', '')).strip(),
