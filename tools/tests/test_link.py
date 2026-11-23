@@ -206,6 +206,18 @@ class 运行时缓存一致性(unittest.TestCase):
             (src / 'SKILL.md').write_text('技能', encoding='utf-8')
             self.assertEqual(expert.cache_drift(src, cache.parent), [('SKILL.md', '缓存缺')])
 
+    def test_平台的进程锁不算缓存多(self):
+        """`.in_use/<pid>` 是平台写的运行时锁，不是漂移——内容一致时必须报干净。"""
+        with tempfile.TemporaryDirectory() as d:
+            src, cache = Path(d) / 'src', Path(d) / 'cache' / '1.0.0'
+            for root in (src, cache):
+                (root / 'agents').mkdir(parents=True)
+            (src / 'agents/x.md').write_text('同一份', encoding='utf-8')
+            (cache / 'agents/x.md').write_text('同一份', encoding='utf-8')
+            (cache / '.in_use').mkdir()
+            (cache / '.in_use/1674').write_text('{"pid":1674}', encoding='utf-8')
+            self.assertEqual(expert.cache_drift(src, cache.parent), [])
+
     def test_没装这个专家时返回None(self):
         with tempfile.TemporaryDirectory() as d:
             self.assertIsNone(expert.cache_drift(Path(d), Path(d) / '不存在'))

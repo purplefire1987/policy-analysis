@@ -51,12 +51,20 @@ def link_target(dest=None):
         return ''
 
 
-# 副本里出现这些不算「差异」：解释器缓存与访达的垃圾文件，删了没人损失。
-NOISE = {'.DS_Store'}
+# 副本里出现这些不算「差异」：解释器缓存、访达的垃圾文件、平台自己写的占位锁。
+# 删了没人损失，报出来全是假警报。
+NOISE = {'.DS_Store', '.in_use'}
 
 
 def _is_noise(p):
-    return p.name in NOISE or p.suffix == '.pyc' or '__pycache__' in p.parts
+    """`p` 是否属于安装噪声。
+
+    `.in_use/<pid>` 是平台加载插件时写的进程锁（内容 `{"pid":…,"procStart":…}`），
+    关了会话就变孤儿——`plugins/cache` 下每个插件都有，不是这个专家独有的漂移。
+    2026-11-23 因此报过一次假红：缓存内容与源逐字一致，只因多了这把锁。
+    """
+    return (p.name in NOISE or p.suffix == '.pyc'
+            or '__pycache__' in p.parts or '.in_use' in p.parts)
 
 
 def drift(dest=None, src=None):
